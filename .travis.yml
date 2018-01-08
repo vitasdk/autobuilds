@@ -6,7 +6,9 @@ matrix:
   include:
   - os: linux
     dist: trusty
-    env: TOXENV=WIN
+    env: 
+      - TOXENV=WIN
+      - CACHE_NAME=WIN
     sudo: false
   - os: linux
     dist: trusty
@@ -18,6 +20,9 @@ addons:
     packages:
     - g++-mingw-w64
     - cmake3
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install graphviz; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export PATH="/usr/local/opt/ccache/libexec:$PATH"; fi
 before_script:
 - export PATH="$HOME/bin:$PATH"
 - make -f texinfo-travis.mk install_texinfo
