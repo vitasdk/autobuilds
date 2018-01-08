@@ -22,7 +22,7 @@ addons:
     - cmake3
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update && brew install ccache; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; brew install texinfo; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install texinfo; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export PATH="/usr/local/opt/ccache/libexec:$PATH"; fi
 before_script:
 - export PATH="$HOME/bin:$PATH"
