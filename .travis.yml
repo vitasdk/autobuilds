@@ -1,9 +1,26 @@
 language: cpp
+
+cache:
+  directories:
+  - buildscripts/build/binutils_build-prefix
+  - buildscripts/build/deps_build-prefix
+  - buildscripts/build/expat_build-prefix
+  - buildscripts/build/gcc-base-prefix
+  - buildscripts/build/gmp_build-prefix
+  - buildscripts/build/isl_build-prefix
+  - buildscripts/build/libelf_build-prefix
+  - buildscripts/build/libyaml_build-prefix
+  - buildscripts/build/libzip_build-prefix
+  - buildscripts/build/mpc_build-prefix
+  - buildscripts/build/mpfr_build-prefix
+  - buildscripts/build/zlib_build-prefix
 matrix:
   include:
   - os: linux
     dist: trusty
-    env: TOXENV=WIN
+    env: 
+      - TOXENV=WIN
+      - CACHE_NAME=WIN
     sudo: false
   - os: linux
     dist: trusty
@@ -15,12 +32,13 @@ addons:
     packages:
     - g++-mingw-w64
     - cmake3
+before_install:
+- git clone https://github.com/vitasdk/buildscripts.git
 before_script:
 - export PATH="$HOME/bin:$PATH"
 - make -f texinfo-travis.mk install_texinfo
 script:
 - export REV=dirty-$(git describe --always)
-- git clone https://github.com/vitasdk/buildscripts.git
 - chmod +x *.sh
 - "./build.sh"
 before_deploy:
