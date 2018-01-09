@@ -12,7 +12,7 @@ make -j4 tarball
     *)
 mkdir build
 cd build
-cmake ..
+cmake .. -DRULE_LAUNCH_COMPILE=ccache
 make -j4 tarball
       ;;
 esac
