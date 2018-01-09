@@ -32,13 +32,13 @@ addons:
     packages:
     - g++-mingw-w64
     - cmake3
-before_install:
-- git clone https://github.com/vitasdk/buildscripts.git
 before_script:
 - export PATH="$HOME/bin:$PATH"
 - make -f texinfo-travis.mk install_texinfo
 script:
 - export REV=dirty-$(git describe --always)
+- git clone https://github.com/vitasdk/buildscripts.git buildscripts2
+- mv buildscripts2/* buildscripts 
 - chmod +x *.sh
 - "./build.sh"
 before_deploy:
