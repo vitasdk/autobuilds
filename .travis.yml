@@ -2,18 +2,7 @@ language: cpp
 
 cache:
   directories:
-  - buildscripts/build/binutils_build-prefix
-  - buildscripts/build/deps_build-prefix
-  - buildscripts/build/expat_build-prefix
-  - buildscripts/build/gcc-base-prefix
-  - buildscripts/build/gmp_build-prefix
-  - buildscripts/build/isl_build-prefix
-  - buildscripts/build/libelf_build-prefix
-  - buildscripts/build/libyaml_build-prefix
-  - buildscripts/build/libzip_build-prefix
-  - buildscripts/build/mpc_build-prefix
-  - buildscripts/build/mpfr_build-prefix
-  - buildscripts/build/zlib_build-prefix
+  - buildscripts/build
 matrix:
   include:
   - os: linux
