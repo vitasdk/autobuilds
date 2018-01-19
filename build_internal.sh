@@ -6,7 +6,7 @@ unset CXX
 unset CC
 mkdir build
 cd build
-cmake .. -DCMAKE_TOOLCHAIN_FILE=toolchain-x86_64-w64-mingw32.cmake
+cmake .. -DCMAKE_TOOLCHAIN_FILE=toolchain-x86_64-w64-mingw32.cmake -DNEWLIB_TAG=upstream
 make -j4 tarball
       ;;
     *)
@@ -18,9 +18,9 @@ if [[ $(uname -s) = "Linux" ]]; then
 	ln -s x86_64-linux-musl-gcc $(pwd)/static-musl-for-travis/bin/gcc
 	export CC="x86_64-linux-musl-gcc -static --static"
 	export CXX="x86_64-linux-musl-g++ -static --static"
-	cmake ..
+	cmake .. -DNEWLIB_TAG=upstream
 else
-	cmake ..
+	cmake .. -DNEWLIB_TAG=upstream
 fi
 make -j4 tarball
       ;;
