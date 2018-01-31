@@ -2,14 +2,6 @@
 
 set -e
 
-echo "==> Download and compile patchelf"
-wget https://nixos.org/releases/patchelf/patchelf-0.9/patchelf-0.9.tar.bz2
-tar xvf patchelf-0.9.tar.bz2
-pushd patchelf-0.9
-./configure
-make
-popd
-
 # We're using a musl toolchain
 echo "==> Obtain static musl toolchain"
 curl http://dl.vitasdk.org/static-musl-for-travis.tar.gz | tar xzv
@@ -40,8 +32,6 @@ for file in $FILES; do
 	if [[ $file != _* ]]; then
 		echo "-- Patching $file"
 
-		# We don't want people to accidentally execute the _$file without the wrapper
-		$PWD/../../patchelf-0.9/src/patchelf --set-interpreter /should/not/exist $file
 		name=$(basename $file)
 		dirpath=$(dirname $file)
 
