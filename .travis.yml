@@ -15,6 +15,7 @@ addons:
     packages:
     - g++-mingw-w64
     - cmake3
+    - realpath
 before_script:
 - export PATH="$HOME/bin:$PATH"
 - make -f texinfo-travis.mk install_texinfo

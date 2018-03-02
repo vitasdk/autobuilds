@@ -13,15 +13,10 @@ make -j4 tarball
 mkdir build
 cd build
 if [[ $(uname -s) = "Linux" ]]; then
-	curl http://dl.vitasdk.org/static-musl-for-travis.tar.gz | tar xzv
-	export PATH=$(pwd)/static-musl-for-travis/bin/:$PATH
-	ln -s x86_64-linux-musl-gcc $(pwd)/static-musl-for-travis/bin/gcc
-	export CC="x86_64-linux-musl-gcc -static --static"
-	export CXX="x86_64-linux-musl-g++ -static --static"
-	cmake ..
+	../../build-linux.sh
 else
 	cmake ..
+	make -j4 tarball
 fi
-make -j4 tarball
       ;;
 esac
