@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     container: ubuntu:14.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -34,7 +34,7 @@ jobs:
         make -j$(nproc) tarball
     - name: Upload artifacts
       if: ${{ success() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: vitasdk-linux
         path: buildscripts/build/*.tar.bz2
@@ -50,8 +50,8 @@ jobs:
   build-macos:
     runs-on: macos-10.15
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-python@v2
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
     - name: Install dependencies
       run: |
         brew install automake libtool
@@ -71,7 +71,7 @@ jobs:
         make -j$(nproc) tarball
     - name: Upload artifacts
       if: ${{ success() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: vitasdk-macos
         path: buildscripts/build/*.tar.bz2
@@ -88,7 +88,7 @@ jobs:
     runs-on: ubuntu-latest
     container: ubuntu:14.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -114,7 +114,7 @@ jobs:
         make -j$(nproc) tarball
     - name: Upload artifacts
       if: ${{ success() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: vitasdk-windows
         path: buildscripts/build/*.tar.bz2
