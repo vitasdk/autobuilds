@@ -10,21 +10,19 @@ on:
 jobs:
   build-linux:
     runs-on: ubuntu-latest
-    container: ubuntu:14.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v2
     - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y software-properties-common
-        sudo add-apt-repository ppa:george-edison55/cmake-3.x
-        sudo apt-get update
-        sudo apt-get install -y cmake cmake-data git build-essential autoconf libtool texinfo bison flex pkg-config python
+        sudo apt-get install -y cmake cmake-data git build-essential autoconf automake libtool texinfo bison flex pkg-config
     - name: Clone
       run: |
         export REV=dirty-$(git describe --always)
         git clone https://github.com/vitasdk/buildscripts.git
-        chmod +x *.sh 
+        chmod +x *.sh
     - name: Build
       run: |
         cd buildscripts
@@ -36,7 +34,7 @@ jobs:
         make -j$(nproc) tarball
     - name: Upload artifacts
       if: ${{ success() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: vitasdk-linux
         path: buildscripts/build/*.tar.bz2
@@ -50,18 +48,18 @@ jobs:
         tag: master-linux-v2.${{github.run_number}}     
         release_name: master-linux-v2.${{github.run_number}}
   build-macos:
-    runs-on: macos-10.15
+    runs-on: macos-12
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - uses: actions/setup-python@v2
     - name: Install dependencies
       run: |
-        brew install automake libtool
+        brew install autoconf automake libtool
     - name: Clone
       run: |
         export REV=dirty-$(git describe --always)
         git clone https://github.com/vitasdk/buildscripts.git
-        chmod +x *.sh 
+        chmod +x *.sh
     - name: Build
       run: |
         cd buildscripts
@@ -73,7 +71,7 @@ jobs:
         make -j$(nproc) tarball
     - name: Upload artifacts
       if: ${{ success() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: vitasdk-macos
         path: buildscripts/build/*.tar.bz2
@@ -88,21 +86,19 @@ jobs:
         release_name: master-osx-v2.${{github.run_number}}
   build-windows:
     runs-on: ubuntu-latest
-    container: ubuntu:14.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v2
     - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y software-properties-common
-        sudo add-apt-repository ppa:george-edison55/cmake-3.x
-        sudo apt-get update
-        sudo apt-get install -y cmake cmake-data git build-essential autoconf libtool texinfo bison flex pkg-config g++-mingw-w64 python
+        sudo apt-get install -y cmake cmake-data git build-essential autoconf automake libtool texinfo bison flex pkg-config g++-mingw-w64
     - name: Clone
       run: |
         export REV=dirty-$(git describe --always)
         git clone https://github.com/vitasdk/buildscripts.git
-        chmod +x *.sh 
+        chmod +x *.sh
     - name: Build
       run: |
         cd buildscripts
@@ -116,7 +112,7 @@ jobs:
         make -j$(nproc) tarball
     - name: Upload artifacts
       if: ${{ success() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: vitasdk-windows
         path: buildscripts/build/*.tar.bz2

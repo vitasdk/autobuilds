@@ -1,6 +1,6 @@
 autobuilds
 ==========
-[![Build Status](https://travis-ci.org/vitasdk/autobuilds.svg?branch=master)](https://travis-ci.org/vitasdk/autobuilds)
+[![Build](https://github.com/vitasdk/autobuilds/actions/workflows/build.yml/badge.svg)](https://github.com/vitasdk/autobuilds/actions/workflows/build.yml)
 
 The latest builds can be found [here](https://github.com/vitasdk/autobuilds/releases/) for Windows (x64), Linux (x64), and OSX (Intel).
 
