@@ -12,7 +12,6 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
-    - uses: actions/setup-python@v2
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -51,7 +50,6 @@ jobs:
     runs-on: macos-12
     steps:
     - uses: actions/checkout@v3
-    - uses: actions/setup-python@v2
     - name: Install dependencies
       run: |
         brew install autoconf automake libtool
@@ -91,7 +89,6 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v3
-    - uses: actions/setup-python@v2
     - name: Install dependencies
       run: |
         sudo apt-get update
