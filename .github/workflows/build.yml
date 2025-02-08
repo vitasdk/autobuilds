@@ -34,7 +34,7 @@ jobs:
         make -j$(nproc) tarball
     - name: Upload artifacts
       if: ${{ success() }}
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: vitasdk-linux
         path: buildscripts/build/*.tar.bz2
@@ -73,7 +73,7 @@ jobs:
         make -j$(nproc) tarball
     - name: Upload artifacts
       if: ${{ success() }}
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: vitasdk-linux-arm64
         path: buildscripts/build/*.tar.bz2
@@ -110,7 +110,7 @@ jobs:
         make -j$(nproc) tarball
     - name: Upload artifacts
       if: ${{ success() }}
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: vitasdk-macos
         path: buildscripts/build/*.tar.bz2
@@ -154,7 +154,7 @@ jobs:
         make -j$(nproc) tarball
     - name: Upload artifacts
       if: ${{ success() }}
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: vitasdk-windows
         path: buildscripts/build/*.tar.bz2
