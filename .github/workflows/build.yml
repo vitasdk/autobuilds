@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
@@ -87,7 +87,7 @@ jobs:
         tag: master-linux-arm64-v2.${{github.run_number}}     
         release_name: master-linux-arm64-v2.${{github.run_number}}
   build-macos:
-    runs-on: macos-12
+    runs-on: macos-15
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
