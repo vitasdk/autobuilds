@@ -87,7 +87,7 @@ jobs:
         tag: master-linux-arm64-v2.${{github.run_number}}     
         release_name: master-linux-arm64-v2.${{github.run_number}}
   build-macos:
-    runs-on: macos-15
+    runs-on: macos-15-large
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
