@@ -90,6 +90,24 @@ for architecture in "${sorted_architectures[@]}"; do
 	mv "$temporary_directory/$architecture.files" "$staging_directory/$architecture.files"
 done
 
+if [[ -n ${LEGACY_ASSET_DIRECTORY:-} ]]; then
+	[[ -d $LEGACY_ASSET_DIRECTORY ]] || {
+		printf 'legacy asset directory not found: %s\n' "$LEGACY_ASSET_DIRECTORY" >&2
+		exit 1
+	}
+	while IFS= read -r -d '' legacy_asset; do
+		legacy_filename=${legacy_asset##*/}
+		[[ ! -e $staging_directory/$legacy_filename ]] || {
+			printf 'duplicate legacy asset: %s\n' "$legacy_filename" >&2
+			exit 1
+		}
+		cp -p "$legacy_asset" "$staging_directory/$legacy_filename"
+	done < <(
+		find "$LEGACY_ASSET_DIRECTORY" -type f -name 'vitasdk-*.tar.bz2' -print0 |
+			LC_ALL=C sort -z
+	)
+fi
+
 (
 	cd "$staging_directory"
 	while IFS= read -r asset; do
