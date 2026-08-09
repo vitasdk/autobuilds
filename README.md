@@ -18,10 +18,11 @@ compares it with the validated build output, and only then publishes it. A
 published snapshot is never modified.
 
 The package-managed preview covers Linux x86_64, Linux aarch64, macOS arm64 and
-Windows x86_64. Unix builds consume the selected `vdpm` source revision;
-Windows consumes the separately released vdpm bundle and verifies its SHA-256
-against the value pinned in the workflow before incorporating it. Preview
-releases are marked as prereleases and cannot be promoted to stable.
+Windows x86_64. Every host consumes the matching separately released `vdpm`
+bundle and verifies both its release sidecar and the SHA-256 pinned in the
+workflow before incorporating it. Component upgrades are reviewed workflow
+changes rather than mutable dispatch inputs. Preview releases are marked as
+prereleases and cannot be promoted to stable.
 
 Channel selection is intentionally outside this build workflow. A stable or
 nightly channel manifest points to an exact immutable SDK release and an exact
