@@ -28,3 +28,10 @@ Channel selection is intentionally outside this build workflow. A stable or
 nightly channel manifest points to an exact immutable SDK release and an exact
 immutable `vitasdk/packages` release after the pair has passed its promotion
 gates.
+
+## Official Docker Images
+
+`autobuilds` automatically builds and publishes official multi-architecture (`linux/amd64` and `linux/arm64`) Docker images on release:
+- `vitasdk/vitasdk:latest`: Base Alpine development image containing the complete VitaSDK toolchain, Pacman package manager, and build tools.
+- `vitasdk/vitasdk:non-root`: Development container configured with a non-root `vitasdk` user and passwordless `sudo`, optimized for CI workflows.
+
