@@ -20,8 +20,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  VDPM_RELEASE_TAG: v0.1.0-alpha.2
-  VDPM_WINDOWS_SHA256: 8b20366af3ee78060d7d78617ebd887a828fa933da7c178b9208f1c05bd1071e
+  VDPM_RELEASE_TAG: v0.1.0-alpha.3
+  VDPM_WINDOWS_SHA256: 4073a34b463c08399c065fe9b0509063fcadb872589a0b7f465b2d246e775f85
 
 jobs:
   prepare:
@@ -53,15 +53,15 @@ jobs:
           - name: linux-x86_64
             runner: ubuntu-24.04
             host: x86_64-linux-gnu
-            vdpm_sha256: 2fc48ee1c8aad5188d4a7ebccf2fd4dc2be9f86aebbe33f41ecd09c45c51e6c0
+            vdpm_sha256: fa5fba8bef983efb1bac56130df9889d3438ff1f23b5a29db9e3fe052cd45ab7
           - name: linux-aarch64
             runner: ubuntu-24.04-arm
             host: aarch64-linux-gnu
-            vdpm_sha256: f281d287960d34ce321f2eb1a950e1e88f85a97f095c75f2bb465fb0ab2de4e1
+            vdpm_sha256: 232fc5a1134b8d1cf41e1c581f36ed90ce6c9ea575a910d5d7f2101f00ab7bef
           - name: macos-arm64
             runner: macos-15
             host: arm64-apple-darwin
-            vdpm_sha256: 67c9660e5dcea40a112df86544d97bb288976effe967ffecc47bc65c663fa573
+            vdpm_sha256: 40f02e1e2a2d195bd7350bf0af3c01e9da3e86f52fced7c8b9a039e3bf07b721
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
