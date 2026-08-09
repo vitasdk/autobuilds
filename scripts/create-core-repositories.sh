@@ -90,20 +90,20 @@ for architecture in "${sorted_architectures[@]}"; do
 	mv "$temporary_directory/$architecture.files" "$staging_directory/$architecture.files"
 done
 
-if [[ -n ${LEGACY_ASSET_DIRECTORY:-} ]]; then
-	[[ -d $LEGACY_ASSET_DIRECTORY ]] || {
-		printf 'legacy asset directory not found: %s\n' "$LEGACY_ASSET_DIRECTORY" >&2
+if [[ -n ${SDK_ARCHIVE_DIRECTORY:-} ]]; then
+	[[ -d $SDK_ARCHIVE_DIRECTORY ]] || {
+		printf 'SDK archive directory not found: %s\n' "$SDK_ARCHIVE_DIRECTORY" >&2
 		exit 1
 	}
-	while IFS= read -r -d '' legacy_asset; do
-		legacy_filename=${legacy_asset##*/}
-		[[ ! -e $staging_directory/$legacy_filename ]] || {
-			printf 'duplicate legacy asset: %s\n' "$legacy_filename" >&2
+	while IFS= read -r -d '' sdk_archive; do
+		archive_filename=${sdk_archive##*/}
+		[[ ! -e $staging_directory/$archive_filename ]] || {
+			printf 'duplicate SDK archive: %s\n' "$archive_filename" >&2
 			exit 1
 		}
-		cp -p "$legacy_asset" "$staging_directory/$legacy_filename"
+		cp -p "$sdk_archive" "$staging_directory/$archive_filename"
 	done < <(
-		find "$LEGACY_ASSET_DIRECTORY" -type f -name 'vitasdk-*.tar.bz2' -print0 |
+		find "$SDK_ARCHIVE_DIRECTORY" -type f -name 'vitasdk-*.tar.bz2' -print0 |
 			LC_ALL=C sort -z
 	)
 fi

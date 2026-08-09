@@ -7,6 +7,18 @@ on:
         description: Branch, tag or commit from vitasdk/buildscripts
         required: false
         type: string
+      vdpm_ref:
+        description: Matching branch, tag or commit from vitasdk/vdpm
+        required: false
+        type: string
+      vdpm_release_tag:
+        description: Immutable vdpm component release used by Windows
+        required: false
+        type: string
+      vdpm_windows_sha256:
+        description: Pinned SHA-256 of the Windows vdpm bundle
+        required: false
+        type: string
   push:
     branches: [master, next]
   pull_request:
@@ -19,11 +31,18 @@ concurrency:
   group: autobuilds-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  DEFAULT_VDPM_RELEASE_TAG: v0.1.0-alpha.1
+  DEFAULT_VDPM_WINDOWS_SHA256: 92c368ea5a22c6da10090e5360df16bfb102f39c7fef8832a12777a087a52580
+
 jobs:
   prepare:
     runs-on: ubuntu-24.04
     outputs:
       buildscripts_ref: ${{ steps.inputs.outputs.buildscripts_ref }}
+      vdpm_ref: ${{ steps.inputs.outputs.vdpm_ref }}
+      vdpm_release_tag: ${{ steps.inputs.outputs.vdpm_release_tag }}
+      vdpm_windows_sha256: ${{ steps.inputs.outputs.vdpm_windows_sha256 }}
       package_version: ${{ steps.inputs.outputs.package_version }}
     steps:
       - id: inputs
@@ -36,7 +55,18 @@ jobs:
           else
             buildscripts_ref=master
           fi
+          vdpm_release_tag='${{ inputs.vdpm_release_tag }}'
+          vdpm_windows_sha256='${{ inputs.vdpm_windows_sha256 }}'
+          vdpm_release_tag=${vdpm_release_tag:-$DEFAULT_VDPM_RELEASE_TAG}
+          vdpm_windows_sha256=${vdpm_windows_sha256:-$DEFAULT_VDPM_WINDOWS_SHA256}
+          vdpm_ref='${{ inputs.vdpm_ref }}'
+          vdpm_ref=${vdpm_ref:-$vdpm_release_tag}
+          [[ $vdpm_release_tag == v* ]]
+          [[ $vdpm_windows_sha256 =~ ^[0-9a-f]{64}$ ]]
           echo "buildscripts_ref=$buildscripts_ref" >> "$GITHUB_OUTPUT"
+          echo "vdpm_ref=$vdpm_ref" >> "$GITHUB_OUTPUT"
+          echo "vdpm_release_tag=$vdpm_release_tag" >> "$GITHUB_OUTPUT"
+          echo "vdpm_windows_sha256=$vdpm_windows_sha256" >> "$GITHUB_OUTPUT"
           echo "package_version=0.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" \
             >> "$GITHUB_OUTPUT"
 
@@ -66,7 +96,9 @@ jobs:
 
       - name: Install macOS build dependencies
         if: runner.os == 'macOS'
-        run: brew install autoconf automake ccache libtool meson ninja texinfo
+        run: |
+          brew install autoconf automake bash ccache libtool meson ninja texinfo
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
 
       - name: Check out exact build scripts
         id: source
@@ -88,7 +120,7 @@ jobs:
           key: sdk-${{ matrix.name }}-${{ steps.source.outputs.revision }}
           restore-keys: sdk-${{ matrix.name }}-
 
-      - name: Build core package and transitional archive
+      - name: Build core package, bootstrap and compatibility archive
         shell: bash
         run: |
           cmake -S buildscripts -B buildscripts/build \
@@ -97,27 +129,51 @@ jobs:
             -DVITASDK_PACKAGE_VERSION='${{ needs.prepare.outputs.package_version }}' \
             -DVITASDK_SOURCE_DATE_EPOCH='${{ steps.source.outputs.source_date_epoch }}' \
             -DVITASDK_SOURCE_REVISION='${{ steps.source.outputs.revision }}' \
-            -DVDPM_TAG='${{ needs.prepare.outputs.buildscripts_ref }}' \
-            -DVITA_MAKEPKG_TAG='${{ needs.prepare.outputs.buildscripts_ref }}'
+            -DVDPM_TAG='${{ needs.prepare.outputs.vdpm_ref }}'
           if [[ $RUNNER_OS == macOS ]]; then
             jobs=$(sysctl -n hw.logicalcpu)
           else
             jobs=$(nproc)
           fi
           cmake --build buildscripts/build \
-            --target core-package tarball --parallel "$jobs"
+            --target core-package bootstrap-archive tarball --parallel "$jobs"
+
+      - name: Exercise clean host bootstrap
+        shell: bash
+        run: |
+          archive_count=$(find buildscripts/build/bootstraps -maxdepth 1 \
+            -type f -name 'vitasdk-bootstrap-*.tar.bz2' | wc -l)
+          [[ $archive_count -eq 1 ]]
+          archive=$(find buildscripts/build/bootstraps -maxdepth 1 \
+            -type f -name 'vitasdk-bootstrap-*.tar.bz2' -print -quit)
+          digest=$(awk '{print $1}' "$archive.sha256")
+          install_root="$RUNNER_TEMP/vitasdk-bootstrap-installed"
+          VITASDK_BOOTSTRAP_ARCHIVE="$PWD/$archive" \
+          VITASDK_BOOTSTRAP_SHA256="$digest" \
+            buildscripts/build/vitasdk/share/vdpm/bootstrap-vitasdk.sh \
+              --install-dir "$install_root"
+          VITASDK="$install_root" "$install_root/bin/vdpm" --help >/dev/null
+          "$install_root/bin/pacman" --version >/dev/null
+          "$install_root/bin/arm-vita-eabi-gcc" --version
+
+      - name: Stage host artifacts
+        shell: bash
+        run: |
+          mkdir host-artifacts
+          cp buildscripts/build/packages/vitasdk-core-*.pkg.tar.xz \
+            buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2 \
+            buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2.sha256 \
+            buildscripts/build/vitasdk-*.tar.bz2 host-artifacts/
 
       - name: Upload host artifacts
         uses: actions/upload-artifact@v4
         with:
           name: core-${{ matrix.name }}
-          path: |
-            buildscripts/build/packages/vitasdk-core-*.pkg.tar.xz
-            buildscripts/build/vitasdk-*.tar.bz2
+          path: host-artifacts/*
           if-no-files-found: error
           retention-days: 14
 
-  build-windows-legacy:
+  build-windows:
     needs: prepare
     runs-on: ubuntu-22.04
     steps:
@@ -127,31 +183,103 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             autoconf automake bison build-essential ccache cmake flex \
-            g++-mingw-w64 libtool pkg-config texinfo
+            g++-mingw-w64 libarchive-tools libtool pkg-config texinfo xz-utils
       - name: Check out build scripts at depth one
+        id: source
         shell: bash
         run: |
           git clone --depth=1 --branch '${{ needs.prepare.outputs.buildscripts_ref }}' \
             https://github.com/vitasdk/buildscripts.git buildscripts
-      - name: Build transitional Windows archive
+          revision=$(git -C buildscripts rev-parse HEAD)
+          source_date_epoch=$(git -C buildscripts show -s --format=%ct HEAD)
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "source_date_epoch=$source_date_epoch" >> "$GITHUB_OUTPUT"
+      - name: Download exact vdpm Windows component
+        id: vdpm
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VDPM_RELEASE_TAG: ${{ needs.prepare.outputs.vdpm_release_tag }}
+          VDPM_WINDOWS_SHA256: ${{ needs.prepare.outputs.vdpm_windows_sha256 }}
+        shell: bash
+        run: |
+          mkdir vdpm-release
+          gh release download "$VDPM_RELEASE_TAG" --repo vitasdk/vdpm \
+            --pattern 'vdpm-*-x86_64-w64-mingw32.tar.bz2' \
+            --pattern 'vdpm-*-x86_64-w64-mingw32.tar.bz2.sha256' \
+            --dir vdpm-release
+          mapfile -t archives < <(find vdpm-release -maxdepth 1 -type f \
+            -name 'vdpm-*-x86_64-w64-mingw32.tar.bz2')
+          [[ ${#archives[@]} -eq 1 ]]
+          archive=${archives[0]}
+          actual=$(sha256sum "$archive")
+          actual=${actual%% *}
+          [[ $actual == "$VDPM_WINDOWS_SHA256" ]]
+          (cd vdpm-release && sha256sum -c *.tar.bz2.sha256)
+          echo "archive=$PWD/$archive" >> "$GITHUB_OUTPUT"
+      - name: Build Windows core package, bootstrap and compatibility archive
         shell: bash
         run: |
           unset CC CXX
           cmake -S buildscripts -B buildscripts/build \
             -DCMAKE_TOOLCHAIN_FILE="$PWD/buildscripts/toolchain-x86_64-w64-mingw32.cmake" \
-            -DVDPM_TAG='${{ needs.prepare.outputs.buildscripts_ref }}' \
-            -DVITA_MAKEPKG_TAG='${{ needs.prepare.outputs.buildscripts_ref }}'
-          cmake --build buildscripts/build --target tarball --parallel "$(nproc)"
-      - name: Upload Windows transition artifact
+            -DBUILD_PACMAN_CLIENT=ON \
+            -DVDPM_WINDOWS_BUNDLE='${{ steps.vdpm.outputs.archive }}' \
+            -DVDPM_WINDOWS_BUNDLE_SHA256='${{ needs.prepare.outputs.vdpm_windows_sha256 }}' \
+            -DVITASDK_PACKAGE_VERSION='${{ needs.prepare.outputs.package_version }}' \
+            -DVITASDK_SOURCE_DATE_EPOCH='${{ steps.source.outputs.source_date_epoch }}' \
+            -DVITASDK_SOURCE_REVISION='${{ steps.source.outputs.revision }}'
+          cmake --build buildscripts/build \
+            --target core-package bootstrap-archive tarball --parallel "$(nproc)"
+      - name: Stage Windows host artifacts
+        shell: bash
+        run: |
+          mkdir host-artifacts
+          cp buildscripts/build/packages/vitasdk-core-*.pkg.tar.xz \
+            buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2 \
+            buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2.sha256 \
+            buildscripts/build/vitasdk-*.tar.bz2 host-artifacts/
+      - name: Upload Windows host artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: legacy-windows-x86_64
-          path: buildscripts/build/vitasdk-*.tar.bz2
+          name: core-windows-x86_64
+          path: host-artifacts/*
           if-no-files-found: error
           retention-days: 14
 
+  test-windows-bootstrap:
+    needs: [prepare, build-windows]
+    runs-on: windows-2025
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-windows-x86_64
+          path: artifacts
+      - name: Check out the matching bootstrap frontend
+        shell: pwsh
+        run: |
+          git clone --depth=1 --branch '${{ needs.prepare.outputs.vdpm_release_tag }}' `
+            https://github.com/vitasdk/vdpm.git vdpm
+      - name: Exercise clean Windows bootstrap
+        shell: pwsh
+        run: |
+          $archives = @(Get-ChildItem artifacts -Recurse -Filter 'vitasdk-bootstrap-*.tar.bz2')
+          if ($archives.Count -ne 1) { throw 'expected exactly one Windows bootstrap' }
+          $archive = $archives[0].FullName
+          $checksum = Get-Content "${archive}.sha256"
+          $digest = ($checksum -split '\s+')[0]
+          $installRoot = Join-Path $env:RUNNER_TEMP 'vitasdk-bootstrap-installed'
+          ./vdpm/bootstrap-vitasdk.ps1 `
+            -ArchivePath $archive -Sha256 $digest -InstallDirectory $installRoot
+          $env:VITASDK = $installRoot
+          & (Join-Path $installRoot 'bin/vdpm.exe') --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'vdpm self-test failed' }
+          & (Join-Path $installRoot 'usr/bin/pacman.exe') --version | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Pacman self-test failed' }
+          & (Join-Path $installRoot 'bin/arm-vita-eabi-gcc.exe') --version
+          if ($LASTEXITCODE -ne 0) { throw 'compiler self-test failed' }
+
   create-grouped-release:
-    needs: [prepare, build-core, build-windows-legacy]
+    needs: [prepare, build-core, build-windows, test-windows-bootstrap]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -160,21 +288,25 @@ jobs:
           path: inputs
           pattern: core-*
           merge-multiple: true
-      - uses: actions/download-artifact@v4
-        with:
-          path: inputs
-          pattern: legacy-*
-          merge-multiple: true
-
       - name: Create grouped host repositories
         shell: bash
         run: |
+          expected=(
+            x86_64-linux-gnu
+            aarch64-linux-gnu
+            arm64-apple-darwin
+            x86_64-w64-mingw32
+          )
+          for host in "${expected[@]}"; do
+            test -f "inputs/vitasdk-bootstrap-$host.tar.bz2"
+            compgen -G "inputs/vitasdk-core-*-$host.pkg.tar.*" >/dev/null
+          done
           docker run --rm \
             --platform linux/amd64 \
             --mount "type=bind,source=$PWD,target=/workspace,readonly" \
             --mount "type=bind,source=$PWD/inputs,target=/input,readonly" \
             --mount "type=bind,source=$RUNNER_TEMP,target=/output" \
-            --env LEGACY_ASSET_DIRECTORY=/input \
+            --env SDK_ARCHIVE_DIRECTORY=/input \
             archlinux@sha256:c1829f370be8434135f43fb3acaef1256780804ac3b2d2eec90dfb1232e1ffdf \
             bash -euc '
               first_package=$(printf "%s\n" /input/vitasdk-core-*.pkg.tar.* | sort | head -n1)
@@ -219,7 +351,7 @@ jobs:
           snapshot_tag="sdk-snapshot-$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           gh release create "$snapshot_tag" --draft --prerelease \
             --target "$GITHUB_SHA" --title "$snapshot_tag" \
-            --notes 'Package-managed SDK preview. Windows remains a legacy archive until the native static package client passes its contract.'
+            --notes 'Package-managed SDK preview with verified bootstraps for every supported host.'
           gh release upload "$snapshot_tag" repository/*
           mkdir downloaded-release
           gh release download "$snapshot_tag" --dir downloaded-release

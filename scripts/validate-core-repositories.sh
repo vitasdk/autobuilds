@@ -52,6 +52,11 @@ for package in "${packages[@]}"; do
 		exit 1
 	}
 	architectures[$architecture]=1
+	bootstrap="vitasdk-bootstrap-$architecture.tar.bz2"
+	[[ -f $repository_directory/$bootstrap ]] || {
+		printf 'missing host bootstrap archive: %s\n' "$bootstrap" >&2
+		exit 1
+	}
 
 	for asset in "$architecture.db" "$architecture.files"; do
 		[[ -f $repository_directory/$asset && ! -L $repository_directory/$asset ]] || {

@@ -55,12 +55,21 @@ EOF
 
 		create_package x86_64-linux-gnu
 		create_package aarch64-linux-gnu
+		mkdir /work/sdk-archives
+		printf "bootstrap fixture\n" > \
+			/work/sdk-archives/vitasdk-bootstrap-x86_64-linux-gnu.tar.bz2
+		printf "bootstrap fixture\n" > \
+			/work/sdk-archives/vitasdk-bootstrap-aarch64-linux-gnu.tar.bz2
+		printf "compatibility fixture\n" > \
+			/work/sdk-archives/vitasdk-x86_64-linux-gnu-fixture.tar.bz2
 		packages=(/work/vitasdk-core-*.pkg.tar.xz)
+		export SDK_ARCHIVE_DIRECTORY=/work/sdk-archives
 		/workspace/scripts/create-core-repositories.sh \
 			/work/repository-one "${packages[@]}"
 		/workspace/scripts/create-core-repositories.sh \
 			/work/repository-two "${packages[@]}"
 		diff -ru /work/repository-one /work/repository-two
+		test -f /work/repository-one/vitasdk-bootstrap-x86_64-linux-gnu.tar.bz2
 
 		cat > /work/pacman.conf <<EOF
 [options]
