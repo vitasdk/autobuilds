@@ -313,6 +313,7 @@ jobs:
           done
           docker run --rm \
             --platform linux/amd64 \
+            --user "$(id -u):$(id -g)" \
             --mount "type=bind,source=$PWD,target=/workspace,readonly" \
             --mount "type=bind,source=$PWD/inputs,target=/input,readonly" \
             --mount "type=bind,source=$RUNNER_TEMP,target=/output" \
