@@ -28,19 +28,35 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       buildscripts_ref: ${{ steps.inputs.outputs.buildscripts_ref }}
+      buildscripts_sha: ${{ steps.inputs.outputs.buildscripts_sha }}
+      packages_ref: ${{ steps.inputs.outputs.packages_ref }}
       package_version: ${{ steps.inputs.outputs.package_version }}
     steps:
       - id: inputs
         shell: bash
         run: |
           if [[ -n '${{ inputs.buildscripts_ref }}' ]]; then
-            buildscripts_ref='${{ inputs.buildscripts_ref }}'
+            raw_ref='${{ inputs.buildscripts_ref }}'
           elif [[ '${{ github.base_ref || github.ref_name }}' == next ]]; then
-            buildscripts_ref=next
+            raw_ref=next
           else
-            buildscripts_ref=master
+            raw_ref=master
           fi
-          echo "buildscripts_ref=$buildscripts_ref" >> "$GITHUB_OUTPUT"
+
+          if [[ "$raw_ref" == next || '${{ github.base_ref || github.ref_name }}' == next ]]; then
+            packages_ref=next
+          else
+            packages_ref=master
+          fi
+
+          # Resolve buildscripts ref to exact 40-character commit SHA
+          git clone --bare --depth=50 --filter=tree:0 https://github.com/vitasdk/buildscripts.git buildscripts.git
+          buildscripts_sha=$(git --git-dir=buildscripts.git rev-parse "$raw_ref^{commit}")
+          rm -rf buildscripts.git
+
+          echo "buildscripts_ref=$raw_ref" >> "$GITHUB_OUTPUT"
+          echo "buildscripts_sha=$buildscripts_sha" >> "$GITHUB_OUTPUT"
+          echo "packages_ref=$packages_ref" >> "$GITHUB_OUTPUT"
           echo "package_version=0.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" \
             >> "$GITHUB_OUTPUT"
 
@@ -79,13 +95,13 @@ jobs:
         run: |
           brew install autoconf automake ccache libtool texinfo
 
-      - name: Check out exact build scripts
+      - name: Check out exact build scripts revision
         id: source
         shell: bash
         run: |
-          git clone --depth=1 --branch '${{ needs.prepare.outputs.buildscripts_ref }}' \
-            https://github.com/vitasdk/buildscripts.git buildscripts
-          revision=$(git -C buildscripts rev-parse HEAD)
+          git clone https://github.com/vitasdk/buildscripts.git buildscripts
+          git -C buildscripts checkout '${{ needs.prepare.outputs.buildscripts_sha }}'
+          revision='${{ needs.prepare.outputs.buildscripts_sha }}'
           source_date_epoch=$(git -C buildscripts show -s --format=%ct HEAD)
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
           echo "source_date_epoch=$source_date_epoch" >> "$GITHUB_OUTPUT"
@@ -96,7 +112,7 @@ jobs:
             buildscripts/build/downloads
             ~/.ccache
             ~/Library/Caches/ccache
-          key: sdk-${{ matrix.name }}-${{ steps.source.outputs.revision }}
+          key: sdk-${{ matrix.name }}-${{ needs.prepare.outputs.buildscripts_sha }}
           restore-keys: sdk-${{ matrix.name }}-
 
       - name: Download exact vdpm host component
@@ -163,7 +179,7 @@ jobs:
           VITASDK_BOOTSTRAP_ARCHIVE="$PWD/$archive" \
           VITASDK_BOOTSTRAP_SHA256="$digest" \
             buildscripts/build/vitasdk/share/vdpm/bootstrap-vitasdk.sh \
-              --install-dir "$install_root"
+               --install-dir "$install_root"
           VITASDK="$install_root" "$install_root/bin/vdpm" --help >/dev/null
           "$install_root/bin/pacman" --version >/dev/null
           "$install_root/bin/arm-vita-eabi-gcc" --version
@@ -196,13 +212,13 @@ jobs:
           sudo apt-get install -y \
             autoconf automake bison build-essential ccache cmake flex \
             g++-mingw-w64 libarchive-tools libtool pkg-config texinfo xz-utils
-      - name: Check out build scripts at depth one
+      - name: Check out exact build scripts revision
         id: source
         shell: bash
         run: |
-          git clone --depth=1 --branch '${{ needs.prepare.outputs.buildscripts_ref }}' \
-            https://github.com/vitasdk/buildscripts.git buildscripts
-          revision=$(git -C buildscripts rev-parse HEAD)
+          git clone https://github.com/vitasdk/buildscripts.git buildscripts
+          git -C buildscripts checkout '${{ needs.prepare.outputs.buildscripts_sha }}'
+          revision='${{ needs.prepare.outputs.buildscripts_sha }}'
           source_date_epoch=$(git -C buildscripts show -s --format=%ct HEAD)
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
           echo "source_date_epoch=$source_date_epoch" >> "$GITHUB_OUTPUT"
@@ -366,7 +382,7 @@ jobs:
           echo "snapshot_tag=$snapshot_tag" >> "$GITHUB_OUTPUT"
           gh release create "$snapshot_tag" --draft --prerelease \
             --target "$GITHUB_SHA" --title "$snapshot_tag" \
-            --notes 'Package-managed SDK preview with verified bootstraps for every supported host.'
+            --notes "Package-managed SDK preview built from buildscripts revision ${{ needs.prepare.outputs.buildscripts_sha }}."
           gh release upload "$snapshot_tag" repository/*
           mkdir downloaded-release
           gh release download "$snapshot_tag" --dir downloaded-release
@@ -375,13 +391,18 @@ jobs:
 
       - name: Trigger packages build
         env:
-          GH_TOKEN: ${{ secrets.REPO_DISPATCH_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.REPO_DISPATCH_TOKEN }}
         shell: bash
         run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::REPO_DISPATCH_TOKEN secret is required for cross-repo dispatch to vitasdk/packages"
+            exit 1
+          fi
           gh api repos/vitasdk/packages/dispatches \
             -f event_type=run_build \
             -f client_payload[core_snapshot]="${{ steps.publish.outputs.snapshot_tag }}" \
-            -f client_payload[branch]="${{ needs.prepare.outputs.buildscripts_ref }}" || true
+            -f client_payload[packages_ref]="${{ needs.prepare.outputs.packages_ref }}" \
+            -f client_payload[buildscripts_sha]="${{ needs.prepare.outputs.buildscripts_sha }}"
 
   publish-docker:
     needs: [create-grouped-release, publish-snapshot]
@@ -394,6 +415,21 @@ jobs:
         with:
           name: grouped-sdk-snapshot
           path: docker/inputs
+
+      - name: Resolve Docker tags
+        id: docker_tags
+        shell: bash
+        run: |
+          snapshot='${{ needs.publish-snapshot.outputs.snapshot_tag }}'
+          if [[ '${{ github.ref }}' == 'refs/heads/next' ]]; then
+            root_tags="vitasdk/vitasdk:next,vitasdk/vitasdk:next-${snapshot}"
+            non_root_tags="vitasdk/vitasdk:next-non-root,vitasdk/vitasdk:next-non-root-${snapshot}"
+          else
+            root_tags="vitasdk/vitasdk:latest,vitasdk/vitasdk:${snapshot}"
+            non_root_tags="vitasdk/vitasdk:non-root,vitasdk/vitasdk:non-root-${snapshot}"
+          fi
+          echo "root_tags=$root_tags" >> "$GITHUB_OUTPUT"
+          echo "non_root_tags=$non_root_tags" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -418,8 +454,7 @@ jobs:
           file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ env.DOCKER_USERNAME != '' && env.DOCKER_PASSWORD != '' }}
-          tags: |
-            vitasdk/vitasdk:latest
+          tags: ${{ steps.docker_tags.outputs.root_tags }}
 
       - name: Build and push non-root image
         uses: docker/build-push-action@v6
@@ -428,6 +463,5 @@ jobs:
           file: docker/non-root/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ env.DOCKER_USERNAME != '' && env.DOCKER_PASSWORD != '' }}
-          tags: |
-            vitasdk/vitasdk:non-root
+          tags: ${{ steps.docker_tags.outputs.non_root_tags }}
 

@@ -52,12 +52,18 @@ jobs:
             pkgs='${{ inputs.packages_release }}'
             chan='${{ inputs.channel }}'
             seq='${{ inputs.sequence }}'
+            b_sha='${{ inputs.buildscripts_sha }}'
           elif [[ -n '${{ github.event.client_payload.packages_snapshot }}' ]]; then
             pkgs='${{ github.event.client_payload.packages_snapshot }}'
+            core='${{ github.event.client_payload.core_snapshot }}'
             chan='nightly'
-            # Look up latest core snapshot from releases
-            core=$(gh release list --repo vitasdk/autobuilds --limit 10 --json tagName -q '.[].tagName' | grep '^sdk-snapshot-' | head -n1)
             seq=""
+            b_sha='${{ github.event.client_payload.buildscripts_sha }}'
+          fi
+          
+          if [[ -z "$core" || -z "$pkgs" ]]; then
+            echo "::error::Both core_release and packages_release must be explicitly provided (no latest-release fallback allowed)"
+            exit 1
           fi
           
           if [[ -z "$seq" ]]; then
@@ -69,8 +75,40 @@ jobs:
           echo "packages_release=$pkgs" >> "$GITHUB_OUTPUT"
           echo "channel=$chan" >> "$GITHUB_OUTPUT"
           echo "sequence=$seq" >> "$GITHUB_OUTPUT"
+          echo "buildscripts_sha=$b_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Verify package provenance against core release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+        run: |
+          core='${{ steps.params.outputs.core_release }}'
+          pkgs='${{ steps.params.outputs.packages_release }}'
+          expected_b_sha='${{ steps.params.outputs.buildscripts_sha }}'
+          
+          echo "Downloading provenance.json from vitasdk/packages release $pkgs..."
+          provenance_tmp=$(mktemp)
+          if ! gh release download "$pkgs" --repo vitasdk/packages --pattern "provenance.json" --output "$provenance_tmp"; then
+            echo "::error::Could not download provenance.json from packages release $pkgs"
+            exit 1
+          fi
+          
+          actual_core=$(python3 -c "import json; print(json.load(open('$provenance_tmp')).get('core_snapshot', ''))")
+          if [[ "$actual_core" != "$core" ]]; then
+            echo "::error::Provenance mismatch! Packages release '$pkgs' was built against '$actual_core', but channel requested '$core'"
+            exit 1
+          fi
+          
+          if [[ -n "$expected_b_sha" ]]; then
+            actual_b_sha=$(python3 -c "import json; print(json.load(open('$provenance_tmp')).get('buildscripts_revision', ''))")
+            if [[ -n "$actual_b_sha" && "$actual_b_sha" != "$expected_b_sha" ]]; then
+              echo "::error::Provenance buildscripts mismatch! Packages has '$actual_b_sha', expected '$expected_b_sha'"
+              exit 1
+            fi
+          fi
+          
+          echo "Provenance verified: packages '$pkgs' was built against exact core '$core'"
+          rm -f "$provenance_tmp"
 
       - name: Generate and sign manifest
         shell: bash
