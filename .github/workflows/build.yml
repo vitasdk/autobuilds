@@ -175,6 +175,26 @@ jobs:
           cmake --build buildscripts/build \
             --target core-package bootstrap-archive tarball --parallel "$jobs"
 
+      - name: Dump configure logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          logs=()
+          while IFS= read -r log; do
+            logs+=("$log")
+          done < <(find buildscripts/build -type f -name config.log 2>/dev/null)
+          if [[ ${#logs[@]} -eq 0 ]]; then
+            echo "no config.log found under buildscripts/build"
+            exit 0
+          fi
+          selected=$(ls -t -- "${logs[@]}" 2>/dev/null | head -n 5) || true
+          while IFS= read -r log; do
+            [[ -n $log ]] || continue
+            echo "::group::$log"
+            tail -n 150 "$log"
+            echo "::endgroup::"
+          done <<< "$selected"
+
       - name: Exercise clean host bootstrap
         shell: bash
         run: |
@@ -268,6 +288,25 @@ jobs:
             -DVITASDK_SOURCE_REVISION='${{ steps.source.outputs.revision }}'
           cmake --build buildscripts/build \
             --target core-package bootstrap-archive tarball --parallel "$(nproc)"
+      - name: Dump configure logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          logs=()
+          while IFS= read -r log; do
+            logs+=("$log")
+          done < <(find buildscripts/build -type f -name config.log 2>/dev/null)
+          if [[ ${#logs[@]} -eq 0 ]]; then
+            echo "no config.log found under buildscripts/build"
+            exit 0
+          fi
+          selected=$(ls -t -- "${logs[@]}" 2>/dev/null | head -n 5) || true
+          while IFS= read -r log; do
+            [[ -n $log ]] || continue
+            echo "::group::$log"
+            tail -n 150 "$log"
+            echo "::endgroup::"
+          done <<< "$selected"
       - name: Stage Windows host artifacts
         shell: bash
         run: |
