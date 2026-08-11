@@ -24,6 +24,10 @@ on:
         description: Monotonic sequence number (leave empty for auto)
         required: false
         type: string
+      buildscripts_sha:
+        description: Exact buildscripts commit the packages release must record
+        required: false
+        type: string
   repository_dispatch:
     types: [update_channel]
 
