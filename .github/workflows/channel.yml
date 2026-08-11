@@ -1,0 +1,102 @@
+name: Update Channel Manifest
+
+on:
+  workflow_dispatch:
+    inputs:
+      core_release:
+        description: Core SDK snapshot release tag (e.g. sdk-snapshot-20260811.1.1)
+        required: true
+        type: string
+      packages_release:
+        description: Packages snapshot release tag (e.g. packages-snapshot-20260811.1.1)
+        required: true
+        type: string
+      channel:
+        description: Target channel name (nightly, stable, rc)
+        required: false
+        default: nightly
+        type: choice
+        options:
+          - nightly
+          - stable
+          - rc
+      sequence:
+        description: Monotonic sequence number (leave empty for auto)
+        required: false
+        type: string
+  repository_dispatch:
+    types: [update_channel]
+
+permissions:
+  contents: write
+
+jobs:
+  update-channel:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check out vitasdk.github.io
+        uses: actions/checkout@v6
+        with:
+          repository: vitasdk/vitasdk.github.io
+          path: vitasdk.github.io
+          token: ${{ secrets.REPO_DISPATCH_TOKEN || github.token }}
+
+      - name: Resolve parameters
+        id: params
+        shell: bash
+        run: |
+          if [[ -n '${{ inputs.core_release }}' ]]; then
+            core='${{ inputs.core_release }}'
+            pkgs='${{ inputs.packages_release }}'
+            chan='${{ inputs.channel }}'
+            seq='${{ inputs.sequence }}'
+          elif [[ -n '${{ github.event.client_payload.packages_snapshot }}' ]]; then
+            pkgs='${{ github.event.client_payload.packages_snapshot }}'
+            chan='nightly'
+            # Look up latest core snapshot from releases
+            core=$(gh release list --repo vitasdk/autobuilds --limit 10 --json tagName -q '.[].tagName' | grep '^sdk-snapshot-' | head -n1)
+            seq=""
+          fi
+          
+          if [[ -z "$seq" ]]; then
+            # Generate monotonic sequence number based on timestamp and run number
+            seq=$(date -u +%Y%m%d)${{ github.run_number }}
+          fi
+          
+          echo "core_release=$core" >> "$GITHUB_OUTPUT"
+          echo "packages_release=$pkgs" >> "$GITHUB_OUTPUT"
+          echo "channel=$chan" >> "$GITHUB_OUTPUT"
+          echo "sequence=$seq" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Generate and sign manifest
+        shell: bash
+        env:
+          SIGNING_KEY: ${{ secrets.CHANNEL_SIGNING_KEY }}
+        run: |
+          mkdir -p vitasdk.github.io/channels
+          key_file=$(mktemp)
+          echo "$SIGNING_KEY" > "$key_file"
+          
+          python3 scripts/generate-channel-manifest.py \
+            --core-release '${{ steps.params.outputs.core_release }}' \
+            --packages-release '${{ steps.params.outputs.packages_release }}' \
+            --channel '${{ steps.params.outputs.channel }}' \
+            --sequence '${{ steps.params.outputs.sequence }}' \
+            --key "$key_file" \
+            --output-dir vitasdk.github.io/channels
+          
+          rm -f "$key_file"
+
+      - name: Commit and push manifest to Pages
+        shell: bash
+        run: |
+          cd vitasdk.github.io
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add channels/
+          git commit -m "channel: update ${{ steps.params.outputs.channel }} to core ${{ steps.params.outputs.core_release }} and packages ${{ steps.params.outputs.packages_release }}" || exit 0
+          git push origin master

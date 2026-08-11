@@ -336,11 +336,13 @@ jobs:
           retention-days: 14
 
   publish-snapshot:
-    needs: create-grouped-release
-    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    needs: [prepare, create-grouped-release]
+    if: (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/next') && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    outputs:
+      snapshot_tag: ${{ steps.publish.outputs.snapshot_tag }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -355,11 +357,13 @@ jobs:
             archlinux@sha256:c1829f370be8434135f43fb3acaef1256780804ac3b2d2eec90dfb1232e1ffdf \
             /workspace/scripts/validate-core-repositories.sh /workspace/repository
       - name: Publish immutable grouped snapshot
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           snapshot_tag="sdk-snapshot-$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          echo "snapshot_tag=$snapshot_tag" >> "$GITHUB_OUTPUT"
           gh release create "$snapshot_tag" --draft --prerelease \
             --target "$GITHUB_SHA" --title "$snapshot_tag" \
             --notes 'Package-managed SDK preview with verified bootstraps for every supported host.'
@@ -369,9 +373,19 @@ jobs:
           diff -ru repository downloaded-release
           gh release edit "$snapshot_tag" --draft=false
 
+      - name: Trigger packages build
+        env:
+          GH_TOKEN: ${{ secrets.REPO_DISPATCH_TOKEN || github.token }}
+        shell: bash
+        run: |
+          gh api repos/vitasdk/packages/dispatches \
+            -f event_type=run_build \
+            -f client_payload[core_snapshot]="${{ steps.publish.outputs.snapshot_tag }}" \
+            -f client_payload[branch]="${{ needs.prepare.outputs.buildscripts_ref }}" || true
+
   publish-docker:
     needs: [create-grouped-release, publish-snapshot]
-    if: always() && needs.create-grouped-release.result == 'success' && github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    if: always() && needs.create-grouped-release.result == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/next') && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
