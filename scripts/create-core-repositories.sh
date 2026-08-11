@@ -103,7 +103,9 @@ if [[ -n ${SDK_ARCHIVE_DIRECTORY:-} ]]; then
 		}
 		cp -p "$sdk_archive" "$staging_directory/$archive_filename"
 	done < <(
-		find "$SDK_ARCHIVE_DIRECTORY" -type f -name 'vitasdk-*.tar.bz2' -print0 |
+		find "$SDK_ARCHIVE_DIRECTORY" -type f \
+			\( -name 'vitasdk-*.tar.bz2' -o -name 'vitasdk-*.tar.bz2.sha256' \) \
+			-print0 |
 			LC_ALL=C sort -z
 	)
 fi

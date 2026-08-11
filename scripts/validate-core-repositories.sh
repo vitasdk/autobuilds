@@ -36,7 +36,8 @@ trap cleanup EXIT
 
 expected_assets="$temporary_directory/expected-assets"
 printf 'SHA256SUMS\n' > "$expected_assets"
-find "$repository_directory" -maxdepth 1 -type f -name 'vitasdk-*.tar.bz2' \
+find "$repository_directory" -maxdepth 1 -type f \
+	\( -name 'vitasdk-*.tar.bz2' -o -name 'vitasdk-*.tar.bz2.sha256' \) \
 	-printf '%f\n' >> "$expected_assets"
 declare -A architectures=()
 
