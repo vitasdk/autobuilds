@@ -28,6 +28,11 @@ on:
         description: Exact buildscripts commit the packages release must record
         required: false
         type: string
+      packages_repository:
+        description: Repository holding the packages release
+        required: false
+        default: vitasdk/vitasdk-autobuild
+        type: string
   repository_dispatch:
     types: [update_channel]
 
@@ -37,6 +42,11 @@ permissions:
 jobs:
   update-channel:
     runs-on: ubuntu-24.04
+    env:
+      # The catalogue lives in its own repository now. Whoever asks for a
+      # manifest says where the packages are, and the manifest records it so
+      # the client builds its URLs from that.
+      PACKAGES_REPOSITORY: ${{ inputs.packages_repository || github.event.client_payload.packages_repository || 'vitasdk/vitasdk-autobuild' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -90,9 +100,9 @@ jobs:
           pkgs='${{ steps.params.outputs.packages_release }}'
           expected_b_sha='${{ steps.params.outputs.buildscripts_sha }}'
           
-          echo "Downloading provenance.json from vitasdk/packages release $pkgs..."
+          echo "Downloading provenance.json from $PACKAGES_REPOSITORY release $pkgs..."
           provenance_tmp=$(mktemp)
-          if ! gh release download "$pkgs" --repo vitasdk/packages --pattern "provenance.json" --output "$provenance_tmp"; then
+          if ! gh release download "$pkgs" --repo "$PACKAGES_REPOSITORY" --pattern "provenance.json" --output "$provenance_tmp"; then
             echo "::error::Could not download provenance.json from packages release $pkgs"
             exit 1
           fi
@@ -128,6 +138,7 @@ jobs:
             --packages-release '${{ steps.params.outputs.packages_release }}' \
             --channel '${{ steps.params.outputs.channel }}' \
             --sequence '${{ steps.params.outputs.sequence }}' \
+            --packages-repository "$PACKAGES_REPOSITORY" \
             --key "$key_file" \
             --output-dir vitasdk.github.io/channels
           

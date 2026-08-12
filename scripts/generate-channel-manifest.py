@@ -54,9 +54,14 @@ def build_manifest(
     sequence: int,
     core_dir: str = None,
     packages_dir: str = None,
+    core_repository: str = "vitasdk/autobuilds",
+    packages_repository: str = "vitasdk/packages",
 ) -> str:
-    core_base = f"https://github.com/vitasdk/autobuilds/releases/download/{core_release}"
-    packages_base = f"https://github.com/vitasdk/packages/releases/download/{packages_release}"
+    # Which repository holds the packages is written into the manifest and the
+    # client builds its URLs from it, so moving the catalogue to another
+    # repository is a matter of saying so here.
+    core_base = f"https://github.com/{core_repository}/releases/download/{core_release}"
+    packages_base = f"https://github.com/{packages_repository}/releases/download/{packages_release}"
 
     architectures = {}
     for host in HOST_ARCHITECTURES:
@@ -76,7 +81,7 @@ def build_manifest(
         "core": {
             "architectures": architectures,
             "release": core_release,
-            "repository": "vitasdk/autobuilds",
+            "repository": core_repository,
         },
         "packages": {
             "database": {
@@ -84,7 +89,7 @@ def build_manifest(
                 "sha256": vita_db_digest,
             },
             "release": packages_release,
-            "repository": "vitasdk/packages",
+            "repository": packages_repository,
         },
         "schema_version": 1,
         "sequence": int(sequence),
@@ -107,7 +112,11 @@ def sign_manifest(manifest_path: str, signature_path: str, private_key_path: str
 def main():
     parser = argparse.ArgumentParser(description="Generate and sign VitaSDK channel manifest")
     parser.add_argument("--core-release", required=True, help="Release tag from vitasdk/autobuilds")
-    parser.add_argument("--packages-release", required=True, help="Release tag from vitasdk/packages")
+    parser.add_argument("--packages-release", required=True, help="Release tag holding the packages")
+    parser.add_argument("--packages-repository", default="vitasdk/packages",
+                        help="Repository holding the packages release")
+    parser.add_argument("--core-repository", default="vitasdk/autobuilds",
+                        help="Repository holding the core release")
     parser.add_argument("--channel", default="nightly", choices=["nightly", "stable", "rc"], help="Target channel name")
     parser.add_argument("--sequence", type=int, default=1, help="Monotonic channel sequence number")
     parser.add_argument("--key", help="Path to Ed25519 private key in PEM format")
@@ -124,6 +133,8 @@ def main():
     manifest_content = build_manifest(
         core_release=args.core_release,
         packages_release=args.packages_release,
+        packages_repository=args.packages_repository,
+        core_repository=args.core_repository,
         channel=args.channel,
         sequence=args.sequence,
         core_dir=args.core_dir,
