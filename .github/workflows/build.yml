@@ -440,20 +440,21 @@ jobs:
           diff -ru repository downloaded-release
           gh release edit "$snapshot_tag" --draft=false
 
-      - name: Trigger packages build
+      # The catalogue is built by vitasdk/vitasdk-autobuild, which pins the
+      # core it builds against rather than being handed one per build. All it
+      # needs is the tag: what to build, and which recipes, are its own.
+      - name: Announce the published core to the package autobuilder
         env:
           GH_TOKEN: ${{ secrets.REPO_DISPATCH_TOKEN }}
         shell: bash
         run: |
           if [[ -z "$GH_TOKEN" ]]; then
-            echo "::error::REPO_DISPATCH_TOKEN secret is required for cross-repo dispatch to vitasdk/packages"
+            echo "::error::REPO_DISPATCH_TOKEN secret is required for cross-repo dispatch to vitasdk/vitasdk-autobuild"
             exit 1
           fi
-          gh api repos/vitasdk/packages/dispatches \
-            -f event_type=run_build \
-            -f client_payload[core_snapshot]="${{ steps.publish.outputs.snapshot_tag }}" \
-            -f client_payload[packages_ref]="${{ needs.prepare.outputs.packages_ref }}" \
-            -f client_payload[buildscripts_sha]="${{ needs.prepare.outputs.buildscripts_sha }}"
+          gh api repos/vitasdk/vitasdk-autobuild/dispatches \
+            -f event_type=core_published \
+            -f client_payload[core_snapshot]="${{ steps.publish.outputs.snapshot_tag }}"
 
   publish-docker:
     needs: [create-grouped-release, publish-snapshot]
