@@ -10,8 +10,6 @@ on:
   push:
     branches: [master, next]
   pull_request:
-  schedule:
-    - cron: '43 2 * * *'
   repository_dispatch:
     types: [run_build]
 
