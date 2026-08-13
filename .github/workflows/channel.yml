@@ -123,6 +123,16 @@ jobs:
           echo "Provenance verified: packages '$pkgs' was built against exact core '$core'"
           rm -f "$provenance_tmp"
 
+          # Carried into the manifest so the client can say something at the
+          # moment somebody installs one of these. A snapshot from before this
+          # existed simply has no such file.
+          if gh release download "$pkgs" --repo "$PACKAGES_REPOSITORY" \
+               --pattern "deprecated.json" --output "$RUNNER_TEMP/deprecated.json"; then
+            echo "deprecated=$RUNNER_TEMP/deprecated.json" >> "$GITHUB_ENV"
+          else
+            echo "::notice::this snapshot publishes no deprecation list"
+          fi
+
       - name: Generate and sign manifest
         shell: bash
         env:
@@ -138,6 +148,7 @@ jobs:
             --channel '${{ steps.params.outputs.channel }}' \
             --sequence '${{ steps.params.outputs.sequence }}' \
             --packages-repository "$PACKAGES_REPOSITORY" \
+            ${deprecated:+--deprecated "$deprecated"} \
             --key "$key_file" \
             --output-dir vitasdk.github.io/channels
           

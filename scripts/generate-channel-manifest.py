@@ -48,6 +48,24 @@ def get_digest(base_url: str, asset_name: str, local_dir: str = None) -> str:
         asset_url = f"{base_url}/{asset_name}"
         return fetch_sha256(asset_url)
 
+def read_deprecated(path):
+    """The deprecated packages published with the snapshot, if it carries any.
+
+    A snapshot from before this existed simply has none, which is different
+    from an unreadable one: that is a mistake worth stopping for, because the
+    result would silently claim nothing is deprecated.
+    """
+
+    if not path:
+        return {}
+    with open(path, encoding="utf-8") as handle:
+        entries = json.load(handle)
+    if not isinstance(entries, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in entries.items()):
+        raise SystemExit(f"ERROR: {path} is not a package to reason mapping")
+    return entries
+
+
 def build_manifest(
     core_release: str,
     packages_release: str,
@@ -57,6 +75,7 @@ def build_manifest(
     packages_dir: str = None,
     core_repository: str = "vitasdk/autobuilds",
     packages_repository: str = "vitasdk/packages",
+    deprecated: dict = None,
 ) -> str:
     # Which repository holds the packages is written into the manifest and the
     # client builds its URLs from it, so moving the catalogue to another
@@ -89,6 +108,10 @@ def build_manifest(
                 "name": "vita.db",
                 "sha256": vita_db_digest,
             },
+            # Rides inside the manifest rather than in a file of its own: it
+            # is a handful of lines, and this way it is signed and already
+            # on disk when somebody runs an install.
+            "deprecated": dict(sorted((deprecated or {}).items())),
             "release": packages_release,
             "repository": packages_repository,
         },
@@ -131,6 +154,8 @@ def main():
     parser = argparse.ArgumentParser(description="Generate and sign VitaSDK channel manifest")
     parser.add_argument("--core-release", required=True, help="Release tag from vitasdk/autobuilds")
     parser.add_argument("--packages-release", required=True, help="Release tag holding the packages")
+    parser.add_argument("--deprecated",
+                        help="deprecated.json from the packages release")
     parser.add_argument("--packages-repository", default="vitasdk/packages",
                         help="Repository holding the packages release")
     parser.add_argument("--core-repository", default="vitasdk/autobuilds",
@@ -159,6 +184,7 @@ def main():
         sequence=args.sequence,
         core_dir=args.core_dir,
         packages_dir=args.packages_dir,
+        deprecated=read_deprecated(args.deprecated),
     )
 
     with open(manifest_file, "w", encoding="utf-8") as f:
