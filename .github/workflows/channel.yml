@@ -178,3 +178,42 @@ jobs:
           git add channels/
           git commit -m "channel: update ${{ steps.params.outputs.channel }} to core ${{ steps.params.outputs.core_release }} and packages ${{ steps.params.outputs.packages_release }}" || exit 0
           git push origin master
+
+      # Pages deploys after the push, not with it. Announcing the channel
+      # before it is actually being served would have the image builder fetch
+      # the previous manifest, conclude that nothing changed and build nothing
+      # -- and the failure would look exactly like a quiet day.
+      - name: Wait for the channel to be served
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel='${{ steps.params.outputs.channel }}'
+          expected=$(sha256sum "vitasdk.github.io/channels/$channel.json" | cut -d' ' -f1)
+          url="https://vitasdk.org/channels/$channel.json"
+          for attempt in $(seq 1 60); do
+            served=$(curl -fsSL "$url" | sha256sum | cut -d' ' -f1) || served=
+            if [[ $served == "$expected" ]]; then
+              echo "$channel is being served after ${attempt} attempts"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$url still does not serve the manifest published by this run"
+          exit 1
+
+      # The images are rebuilt by vitasdk/docker, which resolves everything it
+      # needs from the published channel. All it is handed is the name of the
+      # series that moved: whether that warrants a new image is its own
+      # decision, taken by comparing what it published last time.
+      - name: Announce the published channel to the image builder
+        env:
+          GH_TOKEN: ${{ secrets.REPO_DISPATCH_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::REPO_DISPATCH_TOKEN secret is required for cross-repo dispatch to vitasdk/docker"
+            exit 1
+          fi
+          gh api repos/vitasdk/docker/dispatches \
+            -f event_type=channel_published \
+            -f client_payload[channel]="${{ steps.params.outputs.channel }}"
