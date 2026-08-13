@@ -18,8 +18,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  VDPM_RELEASE_TAG: v0.1.0-rc2
-  VDPM_WINDOWS_SHA256: 3fb2fde734c0b257b07962339f6fcab7c24e02605da61f847ea7600f66183c47
+  VDPM_RELEASE_TAG: v0.1.0
+  VDPM_WINDOWS_SHA256: bf06a524f51b91a54f537fc0a9c9ea9905f18c6b3228ce3e7509950bb5ab6da7
 
 jobs:
   prepare:
