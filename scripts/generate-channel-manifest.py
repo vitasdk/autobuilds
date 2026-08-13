@@ -5,6 +5,7 @@ Matches the strict schema required by vdpm-channel.
 """
 
 import argparse
+import re
 import hashlib
 import json
 import os
@@ -109,6 +110,23 @@ def sign_manifest(manifest_path: str, signature_path: str, private_key_path: str
     ]
     subprocess.run(cmd, check=True)
 
+CHANNEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def channel_name(value):
+    """A channel name, which is not one of a fixed list.
+
+    A release series is a channel that lives as long as the release does, so
+    2026.09 has to be nameable the same way nightly is. It is still checked,
+    because the name ends up in a URL and in the file this writes.
+    """
+
+    if not CHANNEL_NAME.match(value) or ".." in value:
+        raise argparse.ArgumentTypeError(
+            f"invalid channel name: {value!r}")
+    return value
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate and sign VitaSDK channel manifest")
     parser.add_argument("--core-release", required=True, help="Release tag from vitasdk/autobuilds")
@@ -117,7 +135,9 @@ def main():
                         help="Repository holding the packages release")
     parser.add_argument("--core-repository", default="vitasdk/autobuilds",
                         help="Repository holding the core release")
-    parser.add_argument("--channel", default="nightly", choices=["nightly", "stable", "rc"], help="Target channel name")
+    parser.add_argument("--channel", default="nightly", type=channel_name,
+                        help="Target channel name: nightly, stable, or a "
+                             "release series such as 2026.09")
     parser.add_argument("--sequence", type=int, default=1, help="Monotonic channel sequence number")
     parser.add_argument("--key", help="Path to Ed25519 private key in PEM format")
     parser.add_argument("--core-dir", help="Optional local directory containing core databases")

@@ -12,14 +12,13 @@ on:
         required: true
         type: string
       channel:
-        description: Target channel name (nightly, stable, rc)
+        # A free string rather than a list: a release series is a channel, so
+        # 2026.09 has to be publishable without editing this file. The
+        # generator checks the name.
+        description: Target channel name (nightly, stable, or a series such as 2026.09)
         required: false
         default: nightly
-        type: choice
-        options:
-          - nightly
-          - stable
-          - rc
+        type: string
       sequence:
         description: Monotonic sequence number (leave empty for auto)
         required: false
