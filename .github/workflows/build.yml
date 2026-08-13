@@ -73,15 +73,15 @@ jobs:
           - name: linux-x86_64
             runner: ubuntu-24.04
             host: x86_64-linux-gnu
-            vdpm_sha256: 594861644a8b547b54655e60cf4efcf5366c99eddb06872e6352d86dc42ea4b0
+            vdpm_sha256: a0e1e04e6ce1264370464b83cb20454eb9cfe3cf0a8d5d86db9ed66409cd63f3
           - name: linux-aarch64
             runner: ubuntu-24.04-arm
             host: aarch64-linux-gnu
-            vdpm_sha256: 6941009578b9c4e980018f711369e44fb65f26c84e61c962c5547d00edf7464c
+            vdpm_sha256: 698a1b012979f1fad3c7685435bc9250ee310e1ad7173aebef7e5c2fab29f05b
           - name: macos-arm64
             runner: macos-15
             host: arm64-apple-darwin
-            vdpm_sha256: 87b4def023b1cb072c7490eb80c63ee296adfcc25a33839879712189ad4cffbe
+            vdpm_sha256: c81af9bdc39bc6099acc2c9eae35f84eba801c782aa14563c6a73fb3c2239eaa
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
