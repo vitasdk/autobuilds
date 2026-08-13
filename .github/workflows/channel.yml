@@ -143,6 +143,21 @@ jobs:
           
           rm -f "$key_file"
 
+      # Republished with every manifest so a series that changed state says so
+      # without anybody remembering to run a second thing.
+      - name: Generate and sign the release index
+        shell: bash
+        env:
+          SIGNING_KEY: ${{ secrets.CHANNEL_SIGNING_KEY }}
+        run: |
+          key_file=$(mktemp)
+          echo "$SIGNING_KEY" > "$key_file"
+          python3 scripts/generate-channel-index.py \
+            --source channels.json \
+            --key "$key_file" \
+            --output-dir vitasdk.github.io/channels
+          rm -f "$key_file"
+
       - name: Commit and push manifest to Pages
         shell: bash
         run: |
