@@ -1,4 +1,8 @@
 {
+  "2026.08": {
+    "status": "supported",
+    "summary": "What most homebrew is built against. Newlib 4.1."
+  },
   "nightly": {
     "status": "development",
     "summary": "Rebuilt continuously. Expect it to move under you."
