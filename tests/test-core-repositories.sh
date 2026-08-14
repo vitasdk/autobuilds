@@ -99,6 +99,15 @@ EOF
 		pacman --config /work/pacman.conf --root /sdk \
 			--dbpath /sdk/var/lib/pacman --query vdpm
 
+		# The caller that globs for the core alone is how a snapshot went out
+		# with no client in it, and the dependency made it uninstallable.
+		core_only=(/work/vitasdk-core-0.1-1-*.pkg.tar.xz)
+		if /workspace/scripts/create-core-repositories.sh \
+			/work/repository-without-client "${core_only[@]}" 2>/dev/null; then
+			printf "a repository without the client was unexpectedly built\n" >&2
+			exit 1
+		fi
+
 		cp -a /work/repository-one /work/corrupted-repository
 		printf corruption >> /work/corrupted-repository/x86_64-linux-gnu.db
 		if /workspace/scripts/validate-core-repositories.sh \

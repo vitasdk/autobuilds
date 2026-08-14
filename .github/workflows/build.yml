@@ -376,6 +376,7 @@ jobs:
           for host in "${expected[@]}"; do
             test -f "inputs/vitasdk-bootstrap-$host.tar.bz2"
             compgen -G "inputs/vitasdk-core-*-$host.pkg.tar.*" >/dev/null
+            compgen -G "inputs/vdpm-*-$host.pkg.tar.*" >/dev/null
           done
           docker run --rm \
             --platform linux/amd64 \
@@ -391,7 +392,8 @@ jobs:
                 awk -F " = " '\''$1 == "builddate" { print $2; exit }'\'')
               export SOURCE_DATE_EPOCH
               /workspace/scripts/create-core-repositories.sh \
-                /output/repository /input/vitasdk-core-*.pkg.tar.*
+                /output/repository /input/vitasdk-core-*.pkg.tar.* \
+                /input/vdpm-*.pkg.tar.*
             '
 
       - uses: actions/upload-artifact@v4

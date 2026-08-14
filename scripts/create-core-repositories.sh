@@ -64,6 +64,19 @@ for package in "$@"; do
 	cp -p "$package" "$staging_directory/$package_filename"
 done
 
+# The core declares a hard dependency on the client, so a repository carrying
+# one without the other cannot install what it publishes. It has already been
+# published that way once, by a caller that globbed for the core alone.
+for architecture in "${!names[@]}"; do
+	for required in vitasdk-core vdpm; do
+		[[ " ${names[$architecture]} " == *" $required "* ]] || {
+			printf 'no %s for %s: the repository would publish a core that cannot be installed\n' \
+				"$required" "$architecture" >&2
+			exit 1
+		}
+	done
+done
+
 normalize_database() {
 	local source_archive=$1 output_archive=$2 extraction_directory list_file
 	extraction_directory=$(mktemp -d "$temporary_directory/database.XXXXXXXX")
