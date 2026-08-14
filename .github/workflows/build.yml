@@ -208,7 +208,11 @@ jobs:
         shell: bash
         run: |
           mkdir host-artifacts
+          # A core release is the toolchain and the client that installs it.
+          # Leaving the client behind publishes a core whose dependency
+          # nothing in the repository can satisfy.
           cp buildscripts/build/packages/vitasdk-core-*.pkg.tar.xz \
+            buildscripts/build/packages/vdpm-*.pkg.tar.xz \
             buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2 \
             buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2.sha256 \
             buildscripts/build/vitasdk-*.tar.bz2 host-artifacts/
@@ -302,7 +306,11 @@ jobs:
         shell: bash
         run: |
           mkdir host-artifacts
+          # A core release is the toolchain and the client that installs it.
+          # Leaving the client behind publishes a core whose dependency
+          # nothing in the repository can satisfy.
           cp buildscripts/build/packages/vitasdk-core-*.pkg.tar.xz \
+            buildscripts/build/packages/vdpm-*.pkg.tar.xz \
             buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2 \
             buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2.sha256 \
             buildscripts/build/vitasdk-*.tar.bz2 host-artifacts/
