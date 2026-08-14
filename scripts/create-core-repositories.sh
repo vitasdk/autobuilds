@@ -33,6 +33,7 @@ cleanup() {
 trap cleanup EXIT
 
 declare -A architectures=()
+declare -A names=()
 for package in "$@"; do
 	[[ -f $package && ! -L $package ]] || {
 		printf 'core package is not a regular file: %s\n' "$package" >&2
@@ -43,20 +44,23 @@ for package in "$@"; do
 	pkgname=$(awk -F ' = ' '$1 == "pkgname" { print $2; exit }' <<< "$pkginfo")
 	pkgver=$(awk -F ' = ' '$1 == "pkgver" { print $2; exit }' <<< "$pkginfo")
 	architecture=$(awk -F ' = ' '$1 == "arch" { print $2; exit }' <<< "$pkginfo")
-	[[ $pkgname == vitasdk-core && -n $pkgver && -n $architecture ]] || {
+	# A core release is the toolchain and the client that installs it, so a
+	# host repository holds both and neither may appear twice.
+	[[ ($pkgname == vitasdk-core || $pkgname == vdpm) && -n $pkgver && -n $architecture ]] || {
 		printf 'invalid core package metadata: %s\n' "$package_filename" >&2
 		exit 1
 	}
-	[[ $package_filename == "vitasdk-core-$pkgver-$architecture.pkg.tar."* ]] || {
+	[[ $package_filename == "$pkgname-$pkgver-$architecture.pkg.tar."* ]] || {
 		printf 'core package filename does not match metadata: %s\n' \
 			"$package_filename" >&2
 		exit 1
 	}
-	[[ -z ${architectures[$architecture]+present} ]] || {
-		printf 'duplicate core architecture: %s\n' "$architecture" >&2
+	[[ " ${names[$architecture]:-} " != *" $pkgname "* ]] || {
+		printf 'duplicate %s for %s\n' "$pkgname" "$architecture" >&2
 		exit 1
 	}
-	architectures[$architecture]=$package_filename
+	names[$architecture]="${names[$architecture]:-} $pkgname"
+	architectures[$architecture]="${architectures[$architecture]:-} $package_filename"
 	cp -p "$package" "$staging_directory/$package_filename"
 done
 
@@ -76,8 +80,12 @@ normalize_database() {
 
 mapfile -t sorted_architectures < <(printf '%s\n' "${!architectures[@]}" | LC_ALL=C sort)
 for architecture in "${sorted_architectures[@]}"; do
-	package="$staging_directory/${architectures[$architecture]}"
-	repo-add "$staging_directory/$architecture.db.tar.gz" "$package"
+	read -r -a package_filenames <<< "${architectures[$architecture]}"
+	packages=()
+	for package_filename in "${package_filenames[@]}"; do
+		packages+=("$staging_directory/$package_filename")
+	done
+	repo-add "$staging_directory/$architecture.db.tar.gz" "${packages[@]}"
 	normalize_database "$staging_directory/$architecture.db.tar.gz" \
 		"$temporary_directory/$architecture.db"
 	normalize_database "$staging_directory/$architecture.files.tar.gz" \

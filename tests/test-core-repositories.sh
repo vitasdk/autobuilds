@@ -21,14 +21,15 @@ docker run --rm \
 	bash -euc '
 		export LC_ALL=C
 		create_package() {
-			local architecture=$1 root="/work/package-$1"
-			local output="/work/vitasdk-core-0.1-1-$1.pkg.tar.xz"
+			local architecture=$1 name=$2 depends=$3 payload=$4
+			local root="/work/package-$name-$architecture"
+			local output="/work/$name-0.1-1-$architecture.pkg.tar.xz"
 			install -d "$root/bin"
-			printf "#!/bin/sh\nexit 0\n" > "$root/bin/arm-vita-eabi-gcc"
-			chmod +x "$root/bin/arm-vita-eabi-gcc"
+			printf "#!/bin/sh\nexit 0\n" > "$root/bin/$payload"
+			chmod +x "$root/bin/$payload"
 			cat > "$root/.PKGINFO" <<EOF
-pkgname = vitasdk-core
-pkgbase = vitasdk-core
+pkgname = $name
+pkgbase = $name
 pkgver = 0.1-1
 pkgdesc = VitaSDK core repository fixture
 url = https://vitasdk.org/
@@ -39,6 +40,7 @@ arch = $architecture
 license = custom
 xdata = pkgtype=pkg
 EOF
+			[ -z "$depends" ] || printf "depend = %s\n" "$depends" >> "$root/.PKGINFO"
 			printf "format = 2\n" > "$root/.BUILDINFO"
 			(
 				cd "$root"
@@ -53,8 +55,11 @@ EOF
 			)
 		}
 
-		create_package x86_64-linux-gnu
-		create_package aarch64-linux-gnu
+		for architecture in x86_64-linux-gnu aarch64-linux-gnu; do
+			create_package "$architecture" vdpm "" vdpm
+			create_package "$architecture" vitasdk-core "vdpm>=0.1-1" \
+				arm-vita-eabi-gcc
+		done
 		mkdir /work/sdk-archives
 		printf "bootstrap fixture\n" > \
 			/work/sdk-archives/vitasdk-bootstrap-x86_64-linux-gnu.tar.bz2
@@ -62,7 +67,7 @@ EOF
 			/work/sdk-archives/vitasdk-bootstrap-aarch64-linux-gnu.tar.bz2
 		printf "compatibility fixture\n" > \
 			/work/sdk-archives/vitasdk-x86_64-linux-gnu-fixture.tar.bz2
-		packages=(/work/vitasdk-core-*.pkg.tar.xz)
+		packages=(/work/*-0.1-1-*.pkg.tar.xz)
 		export SDK_ARCHIVE_DIRECTORY=/work/sdk-archives
 		/workspace/scripts/create-core-repositories.sh \
 			/work/repository-one "${packages[@]}"
@@ -88,6 +93,11 @@ EOF
 			--logfile /sdk/var/log/pacman.log --noscriptlet \
 			--sync --noconfirm vitasdk-core
 		test -x /sdk/bin/arm-vita-eabi-gcc
+		# Asking for the toolchain has to bring the client that installs it,
+		# straight out of the published host repository.
+		test -x /sdk/bin/vdpm
+		pacman --config /work/pacman.conf --root /sdk \
+			--dbpath /sdk/var/lib/pacman --query vdpm
 
 		cp -a /work/repository-one /work/corrupted-repository
 		printf corruption >> /work/corrupted-repository/x86_64-linux-gnu.db

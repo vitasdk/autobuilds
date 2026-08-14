@@ -21,7 +21,8 @@ fi
 
 mapfile -d '' packages < <(
 	find "$repository_directory" -maxdepth 1 -type f \
-		-name 'vitasdk-core-*.pkg.tar.*' -print0 | LC_ALL=C sort -z
+		\( -name 'vitasdk-core-*.pkg.tar.*' -o -name 'vdpm-*.pkg.tar.*' \) \
+		-print0 | LC_ALL=C sort -z
 )
 (( ${#packages[@]} > 0 )) || {
 	printf 'grouped repository contains no core packages\n' >&2
@@ -47,12 +48,14 @@ for package in "${packages[@]}"; do
 	pkgver=$(awk -F ' = ' '$1 == "pkgver" { print $2; exit }' <<< "$pkginfo")
 	architecture=$(awk -F ' = ' '$1 == "arch" { print $2; exit }' <<< "$pkginfo")
 	[[ -n $pkgver && -n $architecture ]] || exit 1
-	[[ -z ${architectures[$architecture]+present} ]] || {
-		printf 'duplicate architecture in grouped repository: %s\n' \
-			"$architecture" >&2
-		exit 1
-	}
-	architectures[$architecture]=1
+	# Several packages share a host repository, so the assets of that host are
+	# only declared once however many of them arrive.
+	if [[ -z ${architectures[$architecture]+present} ]]; then
+		architectures[$architecture]=1
+		declare_host_assets=1
+	else
+		declare_host_assets=0
+	fi
 	bootstrap="vitasdk-bootstrap-$architecture.tar.bz2"
 	[[ -f $repository_directory/$bootstrap ]] || {
 		printf 'missing host bootstrap archive: %s\n' "$bootstrap" >&2
@@ -64,16 +67,19 @@ for package in "${packages[@]}"; do
 			printf 'missing host repository asset: %s\n' "$asset" >&2
 			exit 1
 		}
-		printf '%s\n' "$asset" >> "$expected_assets"
+		(( declare_host_assets )) && printf '%s\n' "$asset" >> "$expected_assets"
 	done
 	printf '%s\n' "$package_filename" >> "$expected_assets"
 
-	description=$(bsdtar -tf "$repository_directory/$architecture.db" |
-		grep '/desc$')
-	database_filename=$(bsdtar -xOf "$repository_directory/$architecture.db" \
-		"$description" | awk 'previous == "%FILENAME%" { print; exit } { previous = $0 }')
-	[[ $database_filename == "$package_filename" ]] || {
-		printf 'database/package mismatch for %s\n' "$architecture" >&2
+	# The database has to name this package and every other one of its host:
+	# a client missing from it is a client nobody can install.
+	while IFS= read -r description; do
+		bsdtar -xOf "$repository_directory/$architecture.db" "$description" |
+			awk 'previous == "%FILENAME%" { print; exit } { previous = $0 }'
+	done < <(bsdtar -tf "$repository_directory/$architecture.db" | grep '/desc$') |
+		LC_ALL=C sort > "$temporary_directory/database-filenames"
+	grep -qx -- "$package_filename" "$temporary_directory/database-filenames" || {
+		printf 'the %s database does not name %s\n' "$architecture" "$package_filename" >&2
 		exit 1
 	}
 done
@@ -94,4 +100,5 @@ diff -u "$temporary_directory/hashed-assets" "$checksum_assets"
 	sha256sum --check --strict SHA256SUMS
 )
 
-printf 'validated %d host repositories\n' "${#packages[@]}"
+printf 'validated %d host repositories holding %d packages\n' \
+	"${#architectures[@]}" "${#packages[@]}"
