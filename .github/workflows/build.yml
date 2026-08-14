@@ -349,7 +349,7 @@ jobs:
           $env:VITASDK = $installRoot
           & (Join-Path $installRoot 'bin/vdpm.exe') --help | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'vdpm self-test failed' }
-          & (Join-Path $installRoot 'usr/bin/pacman.exe') --version | Out-Null
+          & (Join-Path $installRoot 'share/vdpm/msys/usr/bin/pacman.exe') --version | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Pacman self-test failed' }
           & (Join-Path $installRoot 'bin/arm-vita-eabi-gcc.exe') --version
           if ($LASTEXITCODE -ne 0) { throw 'compiler self-test failed' }
