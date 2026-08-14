@@ -100,8 +100,10 @@ jobs:
           expected_b_sha='${{ steps.params.outputs.buildscripts_sha }}'
           
           echo "Downloading provenance.json from $PACKAGES_REPOSITORY release $pkgs..."
+          # mktemp creates the file, and the download refuses to write over one
+          # that exists, so without --clobber this step can only ever fail.
           provenance_tmp=$(mktemp)
-          if ! gh release download "$pkgs" --repo "$PACKAGES_REPOSITORY" --pattern "provenance.json" --output "$provenance_tmp"; then
+          if ! gh release download "$pkgs" --repo "$PACKAGES_REPOSITORY" --pattern "provenance.json" --output "$provenance_tmp" --clobber; then
             echo "::error::Could not download provenance.json from packages release $pkgs"
             exit 1
           fi

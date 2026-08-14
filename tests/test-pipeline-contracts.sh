@@ -92,4 +92,14 @@ exit 0
 }
 echo "PASS: Test D (missing parameter enforcement)"
 
+# --- Test E: a download into a mktemp file has to be allowed to overwrite it ---
+echo "--- Test E: provenance download can write where it was told to ---"
+grep -q -- '--output "$provenance_tmp" --clobber' \
+    "$AUTOBUILDS_ROOT/.github/workflows/channel.yml" || {
+    echo "FAIL: channel.yml downloads provenance.json over a file mktemp already" >&2
+    echo "      created, which gh refuses without --clobber: the step can only fail" >&2
+    exit 1
+}
+echo "PASS: Test E (provenance download overwrites its own temporary file)"
+
 echo "=== All cross-repository pipeline contract tests PASSED successfully! ==="
