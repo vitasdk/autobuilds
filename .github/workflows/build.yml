@@ -8,7 +8,7 @@ on:
         required: false
         type: string
   push:
-    branches: [master, next]
+    branches: [master]
   pull_request:
   repository_dispatch:
     types: [run_build]
@@ -35,17 +35,10 @@ jobs:
         run: |
           if [[ -n '${{ inputs.buildscripts_ref }}' ]]; then
             raw_ref='${{ inputs.buildscripts_ref }}'
-          elif [[ '${{ github.base_ref || github.ref_name }}' == next ]]; then
-            raw_ref=next
           else
             raw_ref=master
           fi
-
-          if [[ "$raw_ref" == next || '${{ github.base_ref || github.ref_name }}' == next ]]; then
-            packages_ref=next
-          else
-            packages_ref=master
-          fi
+          packages_ref=master
 
           # Resolve buildscripts ref to exact 40-character commit SHA
           if [[ "$raw_ref" =~ ^[0-9a-fA-F]{40}$ ]]; then
@@ -402,7 +395,7 @@ jobs:
 
   publish-snapshot:
     needs: [prepare, create-grouped-release]
-    if: (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/next') && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
