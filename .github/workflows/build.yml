@@ -77,7 +77,7 @@ jobs:
             vdpm_sha256: a1fa4654cbeb389fa8c22c90df9e644e710704919ee846074f69092b335f9c06
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
@@ -106,7 +106,7 @@ jobs:
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
           echo "source_date_epoch=$source_date_epoch" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             buildscripts/build/downloads
@@ -229,7 +229,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -326,7 +326,7 @@ jobs:
     needs: [prepare, build-windows]
     runs-on: windows-2025
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: core-windows-x86_64
           path: artifacts
@@ -358,8 +358,8 @@ jobs:
     needs: [prepare, build-core, build-windows, test-windows-bootstrap]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: inputs
           pattern: core-*
@@ -396,7 +396,7 @@ jobs:
                 /input/vdpm-*.pkg.tar.*
             '
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: grouped-sdk-snapshot
           path: ${{ runner.temp }}/repository/*
@@ -412,8 +412,8 @@ jobs:
     outputs:
       snapshot_tag: ${{ steps.publish.outputs.snapshot_tag }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: grouped-sdk-snapshot
           path: repository

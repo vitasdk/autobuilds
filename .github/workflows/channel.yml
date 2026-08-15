@@ -47,10 +47,10 @@ jobs:
       # the client builds its URLs from that.
       PACKAGES_REPOSITORY: ${{ inputs.packages_repository || github.event.client_payload.packages_repository || 'vitasdk/vitasdk-autobuild' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Check out vitasdk.github.io
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: vitasdk/vitasdk.github.io
           path: vitasdk.github.io
