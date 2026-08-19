@@ -218,7 +218,7 @@ jobs:
             buildscripts/build/vitasdk-*.tar.bz2 host-artifacts/
 
       - name: Upload host artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: core-${{ matrix.name }}
           path: host-artifacts/*
@@ -315,7 +315,7 @@ jobs:
             buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2.sha256 \
             buildscripts/build/vitasdk-*.tar.bz2 host-artifacts/
       - name: Upload Windows host artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: core-windows-x86_64
           path: host-artifacts/*
