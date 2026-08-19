@@ -32,6 +32,11 @@ on:
         required: false
         default: vitasdk/vitasdk-autobuild
         type: string
+      world:
+        description: Toolchain world this snapshot was built for
+        required: false
+        default: vita
+        type: string
   repository_dispatch:
     types: [update_channel]
 
@@ -66,29 +71,32 @@ jobs:
             chan='${{ inputs.channel }}'
             seq='${{ inputs.sequence }}'
             b_sha='${{ inputs.buildscripts_sha }}'
+            world='${{ inputs.world }}'
           elif [[ -n '${{ github.event.client_payload.packages_snapshot }}' ]]; then
             pkgs='${{ github.event.client_payload.packages_snapshot }}'
             core='${{ github.event.client_payload.core_snapshot }}'
             chan='nightly'
             seq=""
             b_sha='${{ github.event.client_payload.buildscripts_sha }}'
+            world='${{ github.event.client_payload.world }}'
           fi
-          
+
           if [[ -z "$core" || -z "$pkgs" ]]; then
             echo "::error::Both core_release and packages_release must be explicitly provided (no latest-release fallback allowed)"
             exit 1
           fi
-          
+
           if [[ -z "$seq" ]]; then
             # Generate monotonic sequence number based on timestamp and run number
             seq=$(date -u +%Y%m%d)${{ github.run_number }}
           fi
-          
+
           echo "core_release=$core" >> "$GITHUB_OUTPUT"
           echo "packages_release=$pkgs" >> "$GITHUB_OUTPUT"
           echo "channel=$chan" >> "$GITHUB_OUTPUT"
           echo "sequence=$seq" >> "$GITHUB_OUTPUT"
           echo "buildscripts_sha=$b_sha" >> "$GITHUB_OUTPUT"
+          echo "world=${world:-vita}" >> "$GITHUB_OUTPUT"
 
       - name: Verify package provenance against core release
         shell: bash
@@ -150,6 +158,7 @@ jobs:
             --channel '${{ steps.params.outputs.channel }}' \
             --sequence '${{ steps.params.outputs.sequence }}' \
             --packages-repository "$PACKAGES_REPOSITORY" \
+            --world '${{ steps.params.outputs.world }}' \
             ${deprecated:+--deprecated "$deprecated"} \
             --key "$key_file" \
             --output-dir vitasdk.github.io/channels

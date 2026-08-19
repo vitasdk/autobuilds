@@ -7,6 +7,11 @@ on:
         description: Branch, tag or commit from vitasdk/buildscripts
         required: false
         type: string
+      world:
+        description: Toolchain world to build (vita or vita-softfp)
+        required: false
+        default: vita
+        type: string
   push:
     branches: [master]
   pull_request:
@@ -29,6 +34,9 @@ jobs:
       buildscripts_sha: ${{ steps.inputs.outputs.buildscripts_sha }}
       packages_ref: ${{ steps.inputs.outputs.packages_ref }}
       package_version: ${{ steps.inputs.outputs.package_version }}
+      world: ${{ steps.inputs.outputs.world }}
+      float_abi: ${{ steps.inputs.outputs.float_abi }}
+      snapshot_tag_prefix: ${{ steps.inputs.outputs.snapshot_tag_prefix }}
     steps:
       - id: inputs
         shell: bash
@@ -39,6 +47,8 @@ jobs:
             raw_ref=master
           fi
           packages_ref=master
+          world='${{ inputs.world }}'
+          world=${world:-vita}
 
           # Resolve buildscripts ref to exact 40-character commit SHA
           if [[ "$raw_ref" =~ ^[0-9a-fA-F]{40}$ ]]; then
@@ -51,11 +61,26 @@ jobs:
             fi
           fi
 
+          # VITASDK_FLOAT_ABI is the buildscripts parameter; "world" is the
+          # name it publishes under everywhere else (release tag, channel,
+          # pacman Architecture). See PLAN-softfp.md for why these differ.
+          case "$world" in
+            vita) float_abi=hard; tag_prefix=sdk-snapshot ;;
+            vita-softfp) float_abi=softfp; tag_prefix=sdk-softfp-snapshot ;;
+            *)
+              echo "::error::Unknown world: $world (expected vita or vita-softfp)"
+              exit 1
+              ;;
+          esac
+
           echo "buildscripts_ref=$raw_ref" >> "$GITHUB_OUTPUT"
           echo "buildscripts_sha=$buildscripts_sha" >> "$GITHUB_OUTPUT"
           echo "packages_ref=$packages_ref" >> "$GITHUB_OUTPUT"
           echo "package_version=0.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" \
             >> "$GITHUB_OUTPUT"
+          echo "world=$world" >> "$GITHUB_OUTPUT"
+          echo "float_abi=$float_abi" >> "$GITHUB_OUTPUT"
+          echo "snapshot_tag_prefix=$tag_prefix" >> "$GITHUB_OUTPUT"
 
   build-core:
     needs: prepare
@@ -153,6 +178,7 @@ jobs:
           cmake -S buildscripts -B buildscripts/build \
             -DBUILD_PACMAN_CLIENT=ON \
             -DPACMAN_CLIENT_INSTALL_DIR="$PWD/buildscripts/build/vitasdk" \
+            -DVITASDK_FLOAT_ABI='${{ needs.prepare.outputs.float_abi }}' \
             -DVITASDK_PACKAGE_VERSION='${{ needs.prepare.outputs.package_version }}' \
             -DVITASDK_SOURCE_DATE_EPOCH='${{ steps.source.outputs.source_date_epoch }}' \
             -DVITASDK_SOURCE_REVISION='${{ steps.source.outputs.revision }}' \
@@ -278,6 +304,7 @@ jobs:
             -DBUILD_PACMAN_CLIENT=ON \
             -DVDPM_BUNDLE='${{ steps.vdpm.outputs.archive }}' \
             -DVDPM_BUNDLE_SHA256="$VDPM_WINDOWS_SHA256" \
+            -DVITASDK_FLOAT_ABI='${{ needs.prepare.outputs.float_abi }}' \
             -DVITASDK_PACKAGE_VERSION='${{ needs.prepare.outputs.package_version }}' \
             -DVITASDK_SOURCE_DATE_EPOCH='${{ steps.source.outputs.source_date_epoch }}' \
             -DVITASDK_SOURCE_REVISION='${{ steps.source.outputs.revision }}'
@@ -430,7 +457,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          snapshot_tag="sdk-snapshot-$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          snapshot_tag="${{ needs.prepare.outputs.snapshot_tag_prefix }}-$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           echo "snapshot_tag=$snapshot_tag" >> "$GITHUB_OUTPUT"
           gh release create "$snapshot_tag" --draft --prerelease \
             --target "$GITHUB_SHA" --title "$snapshot_tag" \
@@ -455,4 +482,5 @@ jobs:
           fi
           gh api repos/vitasdk/vitasdk-autobuild/dispatches \
             -f event_type=core_published \
-            -f client_payload[core_snapshot]="${{ steps.publish.outputs.snapshot_tag }}"
+            -f client_payload[core_snapshot]="${{ steps.publish.outputs.snapshot_tag }}" \
+            -f client_payload[world]="${{ needs.prepare.outputs.world }}"

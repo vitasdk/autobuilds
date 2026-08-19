@@ -66,6 +66,11 @@ def read_deprecated(path):
     return entries
 
 
+# A world is enumerated by hand, never derived from a naming convention: see
+# PLAN-softfp.md. Extend this when a second variant world actually ships.
+WORLDS = ("vita", "vita-softfp")
+
+
 def build_manifest(
     core_release: str,
     packages_release: str,
@@ -76,7 +81,11 @@ def build_manifest(
     core_repository: str = "vitasdk/autobuilds",
     packages_repository: str = "vitasdk/packages",
     deprecated: dict = None,
+    world: str = "vita",
 ) -> str:
+    if world not in WORLDS:
+        raise SystemExit(f"ERROR: unknown world: {world!r}")
+
     # Which repository holds the packages is written into the manifest and the
     # client builds its URLs from it, so moving the catalogue to another
     # repository is a matter of saying so here.
@@ -94,7 +103,8 @@ def build_manifest(
             }
         }
 
-    vita_db_digest = get_digest(packages_base, "vita.db", packages_dir)
+    packages_db_name = f"{world}.db"
+    packages_db_digest = get_digest(packages_base, packages_db_name, packages_dir)
 
     manifest_dict = {
         "channel": channel,
@@ -105,8 +115,8 @@ def build_manifest(
         },
         "packages": {
             "database": {
-                "name": "vita.db",
-                "sha256": vita_db_digest,
+                "name": packages_db_name,
+                "sha256": packages_db_digest,
             },
             # Rides inside the manifest rather than in a file of its own: it
             # is a handful of lines, and this way it is signed and already
@@ -115,8 +125,13 @@ def build_manifest(
             "release": packages_release,
             "repository": packages_repository,
         },
-        "schema_version": 1,
+        # A softfp manifest publishes under schema_version 2 so that a client
+        # too old to know about worlds fails closed on it instead of
+        # bootstrapping a toolchain it cannot actually run against. The
+        # default world keeps publishing schema_version 1 unchanged.
+        "schema_version": 1 if world == "vita" else 2,
         "sequence": int(sequence),
+        "world": world,
     }
 
     # Format canonical JSON (sorted keys, compact separators, single trailing newline)
@@ -164,6 +179,8 @@ def main():
                         help="Target channel name: nightly, stable, or a "
                              "release series such as 2026.09")
     parser.add_argument("--sequence", type=int, default=1, help="Monotonic channel sequence number")
+    parser.add_argument("--world", default="vita", choices=WORLDS,
+                        help="Toolchain world this snapshot was built for")
     parser.add_argument("--key", help="Path to Ed25519 private key in PEM format")
     parser.add_argument("--core-dir", help="Optional local directory containing core databases")
     parser.add_argument("--packages-dir", help="Optional local directory containing packages database")
@@ -185,6 +202,7 @@ def main():
         core_dir=args.core_dir,
         packages_dir=args.packages_dir,
         deprecated=read_deprecated(args.deprecated),
+        world=args.world,
     )
 
     with open(manifest_file, "w", encoding="utf-8") as f:
