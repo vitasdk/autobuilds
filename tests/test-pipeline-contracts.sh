@@ -119,4 +119,17 @@ grep -q '\-z "\$chan"' "$AUTOBUILDS_ROOT/.github/workflows/channel.yml" || {
 }
 echo "PASS: Test F (channel comes from the dispatch payload)"
 
+# --- Test G: two publishes for the same channel must not race ---
+echo "--- Test G: update-channel serializes publishes per channel ---"
+python3 -c "
+import yaml
+with open('$AUTOBUILDS_ROOT/.github/workflows/channel.yml') as f:
+    doc = yaml.safe_load(f)
+job = doc['jobs']['update-channel']
+assert 'concurrency' in job, 'update-channel has no concurrency group'
+assert job['concurrency']['cancel-in-progress'] is False, \
+    'a half-finished manifest push must not be cancelled by a second one'
+"
+echo "PASS: Test G (update-channel has a serializing concurrency group)"
+
 echo "=== All cross-repository pipeline contract tests PASSED successfully! ==="
