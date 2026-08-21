@@ -41,6 +41,9 @@ permissions:
 jobs:
   update-channel:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: channel-${{ github.event.client_payload.channel || inputs.channel || 'dispatch' }}
+      cancel-in-progress: false
     env:
       # The catalogue lives in its own repository now. Whoever asks for a
       # manifest says where the packages are, and the manifest records it so
