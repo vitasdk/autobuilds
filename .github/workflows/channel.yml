@@ -69,13 +69,13 @@ jobs:
           elif [[ -n '${{ github.event.client_payload.packages_snapshot }}' ]]; then
             pkgs='${{ github.event.client_payload.packages_snapshot }}'
             core='${{ github.event.client_payload.core_snapshot }}'
-            chan='nightly'
+            chan='${{ github.event.client_payload.channel }}'
             seq=""
             b_sha='${{ github.event.client_payload.buildscripts_sha }}'
           fi
-          
-          if [[ -z "$core" || -z "$pkgs" ]]; then
-            echo "::error::Both core_release and packages_release must be explicitly provided (no latest-release fallback allowed)"
+
+          if [[ -z "$core" || -z "$pkgs" || -z "$chan" ]]; then
+            echo "::error::core_release, packages_release and channel must all be explicitly provided (no default fallback allowed)"
             exit 1
           fi
           

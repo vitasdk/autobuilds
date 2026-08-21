@@ -102,4 +102,21 @@ grep -q -- '--output "$provenance_tmp" --clobber' \
 }
 echo "PASS: Test E (provenance download overwrites its own temporary file)"
 
+# --- Test F: repository_dispatch must read the channel, not hardcode it ---
+echo "--- Test F: channel comes from the dispatch payload, not a literal ---"
+if grep -q "chan='nightly'" "$AUTOBUILDS_ROOT/.github/workflows/channel.yml"; then
+    echo "FAIL: channel.yml still hardcodes the repository_dispatch channel to nightly" >&2
+    exit 1
+fi
+grep -q "chan='\${{ github.event.client_payload.channel }}'" \
+    "$AUTOBUILDS_ROOT/.github/workflows/channel.yml" || {
+    echo "FAIL: channel.yml does not read channel from client_payload.channel" >&2
+    exit 1
+}
+grep -q '\-z "\$chan"' "$AUTOBUILDS_ROOT/.github/workflows/channel.yml" || {
+    echo "FAIL: channel.yml does not require channel like it requires core/packages" >&2
+    exit 1
+}
+echo "PASS: Test F (channel comes from the dispatch payload)"
+
 echo "=== All cross-repository pipeline contract tests PASSED successfully! ==="
