@@ -65,10 +65,12 @@ jobs:
         include:
           - name: linux-x86_64
             runner: ubuntu-24.04
+            container: ubuntu:20.04
             host: x86_64-linux-gnu
             vdpm_sha256: bc030236db0892aa0afd6ab02b914f56573c178c34a47077d0eef4d4503e07d5
           - name: linux-aarch64
             runner: ubuntu-24.04-arm
+            container: ubuntu:20.04
             host: aarch64-linux-gnu
             vdpm_sha256: 14d2d154d6073a4a292d1b2b7e73cab2ef90934b130b0e08b9d4246c4b012da0
           - name: macos-arm64
@@ -76,16 +78,24 @@ jobs:
             host: arm64-apple-darwin
             vdpm_sha256: 8e53c32b5f52da627500f4f697adc4a8fdd20e930976ee1a4b4b6df8a04f356a
     runs-on: ${{ matrix.runner }}
+    # The Linux legs build inside ubuntu:20.04 so the published SDK runs on
+    # glibc 2.31 hosts, matching the vdpm bundles built the same way.
+    container: ${{ matrix.container }}
     steps:
       - uses: actions/checkout@v7
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            autoconf automake bison build-essential ccache cmake flex gettext \
-            libarchive-tools libtool pkg-config texinfo
+          apt-get update
+          apt-get install -y \
+            autoconf automake bison build-essential bzip2 ccache curl flex \
+            gettext git libarchive-tools libtool pkg-config python3-pip \
+            texinfo xz-utils
+          # focal's cmake predates the package client's 3.20 floor.
+          pip3 install --quiet cmake==3.31.6
 
       - name: Install macOS build dependencies
         if: runner.os == 'macOS'
@@ -118,38 +128,30 @@ jobs:
       - name: Download exact vdpm host component
         id: vdpm
         env:
-          GH_TOKEN: ${{ github.token }}
           VDPM_HOST: ${{ matrix.host }}
           VDPM_SHA256: ${{ matrix.vdpm_sha256 }}
         shell: bash
         run: |
           mkdir vdpm-release
-          gh release download "$VDPM_RELEASE_TAG" --repo vitasdk/vdpm \
-            --pattern "vdpm-*-$VDPM_HOST.tar.bz2" \
-            --pattern "vdpm-*-$VDPM_HOST.tar.bz2.sha256" \
-            --dir vdpm-release
-          archive_count=$(find vdpm-release -maxdepth 1 -type f \
-            -name "vdpm-*-$VDPM_HOST.tar.bz2" | wc -l)
-          sidecar_count=$(find vdpm-release -maxdepth 1 -type f \
-            -name "vdpm-*-$VDPM_HOST.tar.bz2.sha256" | wc -l)
-          [[ $archive_count -eq 1 && $sidecar_count -eq 1 ]]
-          archive=$(find vdpm-release -maxdepth 1 -type f \
-            -name "vdpm-*-$VDPM_HOST.tar.bz2" -print -quit)
-          sidecar=$(find vdpm-release -maxdepth 1 -type f \
-            -name "vdpm-*-$VDPM_HOST.tar.bz2.sha256" -print -quit)
+          archive="vdpm-${VDPM_RELEASE_TAG#v}-$VDPM_HOST.tar.bz2"
+          base="https://github.com/vitasdk/vdpm/releases/download/$VDPM_RELEASE_TAG"
+          curl -fsSL --retry 3 -o "vdpm-release/$archive" "$base/$archive"
+          curl -fsSL --retry 3 -o "vdpm-release/$archive.sha256" "$base/$archive.sha256"
           if command -v sha256sum >/dev/null; then
-            actual=$(sha256sum "$archive")
+            actual=$(sha256sum "vdpm-release/$archive")
           else
-            actual=$(shasum -a 256 "$archive")
+            actual=$(shasum -a 256 "vdpm-release/$archive")
           fi
           actual=${actual%% *}
-          sidecar_digest=$(awk '{print $1}' "$sidecar")
+          sidecar_digest=$(awk '{print $1}' "vdpm-release/$archive.sha256")
           [[ $actual == "$VDPM_SHA256" && $sidecar_digest == "$VDPM_SHA256" ]]
-          echo "archive=$PWD/$archive" >> "$GITHUB_OUTPUT"
+          echo "archive=$PWD/vdpm-release/$archive" >> "$GITHUB_OUTPUT"
 
       - name: Build core package, bootstrap and compatibility archive
         shell: bash
         run: |
+          # focal images carry no default locale and GCC's tarball needs one.
+          export LANG=C.UTF-8
           cmake -S buildscripts -B buildscripts/build \
             -DBUILD_PACMAN_CLIENT=ON \
             -DPACMAN_CLIENT_INSTALL_DIR="$PWD/buildscripts/build/vitasdk" \
