@@ -203,7 +203,7 @@ jobs:
             buildscripts/build/vitasdk/share/vdpm/bootstrap-vitasdk.sh \
                --install-dir "$install_root"
           VITASDK="$install_root" "$install_root/bin/vdpm" --help >/dev/null
-          "$install_root/bin/pacman" --version >/dev/null
+          "$install_root/libexec/vdpm/pacman" --version >/dev/null
           "$install_root/bin/arm-vita-eabi-gcc" --version
 
       - name: Stage host artifacts
