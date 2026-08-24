@@ -228,7 +228,9 @@ jobs:
           retention-days: 14
 
   build-windows:
-    needs: prepare
+    # The canadian cross imports the target half from the Linux SDK and needs
+    # its arm-vita-eabi-gcc as the compiler that runs where it builds.
+    needs: [prepare, build-core]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
@@ -271,12 +273,32 @@ jobs:
           [[ $actual == "$VDPM_WINDOWS_SHA256" ]]
           (cd vdpm-release && sha256sum -c *.tar.bz2.sha256)
           echo "archive=$PWD/$archive" >> "$GITHUB_OUTPUT"
+      - name: Fetch the build machine's SDK
+        uses: actions/download-artifact@v7
+        with:
+          name: core-linux-x86_64
+          path: build-sdk-artifact
+      - name: Unpack the build machine's SDK
+        shell: bash
+        run: |
+          mapfile -t sdks < <(find build-sdk-artifact -maxdepth 1 -type f \
+            -name 'vitasdk-*.tar.bz2' ! -name 'vitasdk-bootstrap-*')
+          [[ ${#sdks[@]} -eq 1 ]]
+          mkdir -p build-sdk
+          tar -xjf "${sdks[0]}" -C build-sdk
+          STAGE1_DIR=$(dirname "$(dirname "$(dirname "$(find "$PWD/build-sdk" -type f -path '*/arm-vita-eabi/lib/libc.a' | head -1)")")")
+          test -n "$STAGE1_DIR"
+          echo "STAGE1_DIR=$STAGE1_DIR" >> "$GITHUB_ENV"
+          # gcc runs arm-vita-eabi-gcc -dumpspecs during all-gcc; this is the
+          # one that runs here.
+          echo "$STAGE1_DIR/bin" >> "$GITHUB_PATH"
       - name: Build Windows core package, bootstrap and compatibility archive
         shell: bash
         run: |
           unset CC CXX
           cmake -S buildscripts -B buildscripts/build \
             -DCMAKE_TOOLCHAIN_FILE="$PWD/buildscripts/toolchain-x86_64-w64-mingw32.cmake" \
+            -DVITASDK_STAGE1_DIR="$STAGE1_DIR" \
             -DBUILD_PACMAN_CLIENT=ON \
             -DVDPM_BUNDLE='${{ steps.vdpm.outputs.archive }}' \
             -DVDPM_BUNDLE_SHA256="$VDPM_WINDOWS_SHA256" \
