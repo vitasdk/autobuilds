@@ -123,17 +123,23 @@ jobs:
         id: publish
         env:
           GH_TOKEN: ${{ github.token }}
+          # The lock names every source revision that went in; without it a
+          # snapshot records what it contains but not what produced it.
+          LOCK_JSON: ${{ needs.prepare.outputs.lock }}
         shell: bash
         run: |
+          mkdir publish
+          cp repository/* publish/
+          printf '%s\n' "$LOCK_JSON" > publish/lock.json
           snapshot_tag="sdk-snapshot-$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           echo "snapshot_tag=$snapshot_tag" >> "$GITHUB_OUTPUT"
           gh release create "$snapshot_tag" --draft --prerelease \
             --target "$GITHUB_SHA" --title "$snapshot_tag" \
             --notes "Package-managed SDK preview built from buildscripts revision ${{ needs.prepare.outputs.buildscripts_revision }}."
-          gh release upload "$snapshot_tag" repository/*
+          gh release upload "$snapshot_tag" publish/*
           mkdir downloaded-release
           gh release download "$snapshot_tag" --dir downloaded-release
-          diff -ru repository downloaded-release
+          diff -ru publish downloaded-release
           gh release edit "$snapshot_tag" --draft=false
 
       # The catalogue is built by vitasdk/vitasdk-autobuild, which pins the
