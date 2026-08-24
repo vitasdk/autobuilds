@@ -18,417 +18,67 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  VDPM_RELEASE_TAG: v0.1.2
-  VDPM_WINDOWS_SHA256: b3baf28a8ea870e32661c746e6f75b0480b3a6dad8f33aa7a0df7b90a55833c7
+  # Which world this workflow drives; softfp wiring is separate follow-up work.
+  PROFILE: vita
+  # Release policy, not build knowledge: which hosts must publish.
+  REQUIRED_HOSTS: "x86_64-linux-gnu aarch64-linux-gnu arm64-apple-darwin x86_64-w64-mingw32"
 
 jobs:
   prepare:
     runs-on: ubuntu-24.04
     outputs:
-      buildscripts_ref: ${{ steps.inputs.outputs.buildscripts_ref }}
-      buildscripts_sha: ${{ steps.inputs.outputs.buildscripts_sha }}
-      packages_ref: ${{ steps.inputs.outputs.packages_ref }}
-      package_version: ${{ steps.inputs.outputs.package_version }}
+      buildscripts_ref: ${{ steps.ref.outputs.ref }}
+      buildscripts_revision: ${{ steps.describe.outputs.buildscripts_revision }}
+      build_id: ${{ steps.describe.outputs.build_id }}
+      version: ${{ steps.describe.outputs.version }}
+      lock: ${{ steps.describe.outputs.lock }}
     steps:
-      - id: inputs
+      - id: ref
         shell: bash
         run: |
-          if [[ -n '${{ inputs.buildscripts_ref }}' ]]; then
-            raw_ref='${{ inputs.buildscripts_ref }}'
-          else
-            raw_ref=master
-          fi
-          packages_ref=master
+          raw_ref='${{ inputs.buildscripts_ref }}'
+          echo "ref=${raw_ref:-master}" >> "$GITHUB_OUTPUT"
 
-          # Resolve buildscripts ref to exact 40-character commit SHA
-          if [[ "$raw_ref" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            buildscripts_sha="$raw_ref"
-          else
-            buildscripts_sha=$(git ls-remote https://github.com/vitasdk/buildscripts.git "refs/heads/$raw_ref" "refs/tags/$raw_ref" "$raw_ref" | head -n1 | awk '{print $1}')
-            if [[ -z "$buildscripts_sha" ]]; then
-              echo "::error::Could not resolve buildscripts revision for ref: $raw_ref"
+      - uses: actions/checkout@v7
+        with:
+          repository: vitasdk/buildscripts
+          ref: ${{ steps.ref.outputs.ref }}
+          fetch-depth: 0
+          path: buildscripts
+
+      - id: describe
+        shell: bash
+        working-directory: buildscripts
+        run: |
+          lock_path="$RUNNER_TEMP/lock.json"
+          ./buildscripts-ci describe --profile "$PROFILE" --output "$lock_path"
+          {
+            echo "lock<<LOCK_JSON_EOF"
+            cat "$lock_path"
+            echo "LOCK_JSON_EOF"
+          } >> "$GITHUB_OUTPUT"
+          jq -r '"build_id=\(.build_id)", "buildscripts_revision=\(.buildscripts_revision)", "version=\(.version)"' \
+            "$lock_path" >> "$GITHUB_OUTPUT"
+
+      - name: Check the required hosts are buildable at this revision
+        shell: bash
+        run: |
+          buildable_hosts=$(jq -r '.hosts[].name' "$RUNNER_TEMP/lock.json" | LC_ALL=C sort -u)
+          for host in $REQUIRED_HOSTS; do
+            grep -qxF "$host" <<<"$buildable_hosts" || {
+              echo "::error::required host $host cannot be built at buildscripts revision ${{ steps.describe.outputs.buildscripts_revision }}"
               exit 1
-            fi
-          fi
-
-          echo "buildscripts_ref=$raw_ref" >> "$GITHUB_OUTPUT"
-          echo "buildscripts_sha=$buildscripts_sha" >> "$GITHUB_OUTPUT"
-          echo "packages_ref=$packages_ref" >> "$GITHUB_OUTPUT"
-          echo "package_version=0.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" \
-            >> "$GITHUB_OUTPUT"
-
-  build-core:
-    needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux-x86_64
-            runner: ubuntu-24.04
-            container: ubuntu:20.04
-            host: x86_64-linux-gnu
-            vdpm_sha256: bc030236db0892aa0afd6ab02b914f56573c178c34a47077d0eef4d4503e07d5
-          - name: linux-aarch64
-            runner: ubuntu-24.04-arm
-            container: ubuntu:20.04
-            host: aarch64-linux-gnu
-            vdpm_sha256: 14d2d154d6073a4a292d1b2b7e73cab2ef90934b130b0e08b9d4246c4b012da0
-          - name: macos-arm64
-            runner: macos-15
-            host: arm64-apple-darwin
-            vdpm_sha256: 8e53c32b5f52da627500f4f697adc4a8fdd20e930976ee1a4b4b6df8a04f356a
-    runs-on: ${{ matrix.runner }}
-    # The Linux legs build inside ubuntu:20.04 so the published SDK runs on
-    # glibc 2.31 hosts, matching the vdpm bundles built the same way.
-    container: ${{ matrix.container }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          apt-get update
-          apt-get install -y \
-            autoconf automake bison build-essential bzip2 ccache curl flex \
-            gettext git libarchive-tools libtool pkg-config python3-pip \
-            texinfo xz-utils
-          # focal's cmake predates the package client's 3.20 floor.
-          pip3 install --quiet cmake==3.31.6
-
-      - name: Install macOS build dependencies
-        if: runner.os == 'macOS'
-        run: |
-          brew install autoconf automake ccache libtool texinfo
-
-      - name: Check out exact build scripts revision
-        id: source
-        shell: bash
-        run: |
-          mkdir -p buildscripts
-          git -C buildscripts init
-          git -C buildscripts remote add origin https://github.com/vitasdk/buildscripts.git
-          git -C buildscripts fetch --depth=1 origin '${{ needs.prepare.outputs.buildscripts_sha }}'
-          git -C buildscripts checkout FETCH_HEAD
-          revision='${{ needs.prepare.outputs.buildscripts_sha }}'
-          source_date_epoch=$(git -C buildscripts show -s --format=%ct HEAD)
-          echo "revision=$revision" >> "$GITHUB_OUTPUT"
-          echo "source_date_epoch=$source_date_epoch" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v6
-        with:
-          path: |
-            buildscripts/build/downloads
-            ~/.ccache
-            ~/Library/Caches/ccache
-          key: sdk-${{ matrix.name }}-${{ needs.prepare.outputs.buildscripts_sha }}
-          restore-keys: sdk-${{ matrix.name }}-
-
-      - name: Download exact vdpm host component
-        id: vdpm
-        env:
-          VDPM_HOST: ${{ matrix.host }}
-          VDPM_SHA256: ${{ matrix.vdpm_sha256 }}
-        shell: bash
-        run: |
-          mkdir vdpm-release
-          archive="vdpm-${VDPM_RELEASE_TAG#v}-$VDPM_HOST.tar.bz2"
-          base="https://github.com/vitasdk/vdpm/releases/download/$VDPM_RELEASE_TAG"
-          curl -fsSL --retry 3 -o "vdpm-release/$archive" "$base/$archive"
-          curl -fsSL --retry 3 -o "vdpm-release/$archive.sha256" "$base/$archive.sha256"
-          if command -v sha256sum >/dev/null; then
-            actual=$(sha256sum "vdpm-release/$archive")
-          else
-            actual=$(shasum -a 256 "vdpm-release/$archive")
-          fi
-          actual=${actual%% *}
-          sidecar_digest=$(awk '{print $1}' "vdpm-release/$archive.sha256")
-          [[ $actual == "$VDPM_SHA256" && $sidecar_digest == "$VDPM_SHA256" ]]
-          echo "archive=$PWD/vdpm-release/$archive" >> "$GITHUB_OUTPUT"
-
-      - name: Build core package, bootstrap and compatibility archive
-        shell: bash
-        run: |
-          # focal images carry no default locale and GCC's tarball needs one.
-          export LANG=C.UTF-8
-          cmake -S buildscripts -B buildscripts/build \
-            -DBUILD_PACMAN_CLIENT=ON \
-            -DPACMAN_CLIENT_INSTALL_DIR="$PWD/buildscripts/build/vitasdk" \
-            -DVITASDK_PACKAGE_VERSION='${{ needs.prepare.outputs.package_version }}' \
-            -DVITASDK_SOURCE_DATE_EPOCH='${{ steps.source.outputs.source_date_epoch }}' \
-            -DVITASDK_SOURCE_REVISION='${{ steps.source.outputs.revision }}' \
-            -DVDPM_BUNDLE='${{ steps.vdpm.outputs.archive }}' \
-            -DVDPM_BUNDLE_SHA256='${{ matrix.vdpm_sha256 }}'
-          if [[ $RUNNER_OS == macOS ]]; then
-            jobs=$(sysctl -n hw.logicalcpu)
-          else
-            jobs=$(nproc)
-          fi
-          cmake --build buildscripts/build \
-            --target core-package bootstrap-archive tarball --parallel "$jobs"
-
-      - name: Dump configure logs on failure
-        if: failure()
-        shell: bash
-        run: |
-          logs=()
-          while IFS= read -r log; do
-            logs+=("$log")
-          done < <(find buildscripts/build -type f -name config.log 2>/dev/null)
-          if [[ ${#logs[@]} -eq 0 ]]; then
-            echo "no config.log found under buildscripts/build"
-            exit 0
-          fi
-          selected=$(ls -t -- "${logs[@]}" 2>/dev/null | head -n 5) || true
-          while IFS= read -r log; do
-            [[ -n $log ]] || continue
-            echo "::group::$log"
-            tail -n 150 "$log"
-            echo "::endgroup::"
-          done <<< "$selected"
-
-      - name: Exercise clean host bootstrap
-        shell: bash
-        run: |
-          archive_count=$(find buildscripts/build/bootstraps -maxdepth 1 \
-            -type f -name 'vitasdk-bootstrap-*.tar.bz2' | wc -l)
-          [[ $archive_count -eq 1 ]]
-          archive=$(find buildscripts/build/bootstraps -maxdepth 1 \
-            -type f -name 'vitasdk-bootstrap-*.tar.bz2' -print -quit)
-          digest=$(awk '{print $1}' "$archive.sha256")
-          install_root="$RUNNER_TEMP/vitasdk-bootstrap-installed"
-          VITASDK_BOOTSTRAP_ARCHIVE="$PWD/$archive" \
-          VITASDK_BOOTSTRAP_SHA256="$digest" \
-            buildscripts/build/vitasdk/share/vdpm/bootstrap-vitasdk.sh \
-               --install-dir "$install_root"
-          VITASDK="$install_root" "$install_root/bin/vdpm" --help >/dev/null
-          "$install_root/libexec/vdpm/pacman" --version >/dev/null
-          "$install_root/bin/arm-vita-eabi-gcc" --version
-
-      - name: Stage host artifacts
-        shell: bash
-        run: |
-          mkdir host-artifacts
-          # A core release is the toolchain and the client that installs it.
-          # Leaving the client behind publishes a core whose dependency
-          # nothing in the repository can satisfy.
-          cp buildscripts/build/packages/vitasdk-core-*.pkg.tar.xz \
-            buildscripts/build/packages/vdpm-*.pkg.tar.xz \
-            buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2 \
-            buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2.sha256 \
-            buildscripts/build/vitasdk-*.tar.bz2 host-artifacts/
-
-      - name: Upload host artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: core-${{ matrix.name }}
-          path: host-artifacts/*
-          if-no-files-found: error
-          retention-days: 14
-
-  build-windows:
-    # The canadian cross imports the target half from the Linux SDK and needs
-    # its arm-vita-eabi-gcc as the compiler that runs where it builds.
-    needs: [prepare, build-core]
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            autoconf automake bison build-essential ccache cmake flex \
-            g++-mingw-w64 libarchive-tools libtool pkg-config texinfo xz-utils
-      - name: Check out exact build scripts revision
-        id: source
-        shell: bash
-        run: |
-          mkdir -p buildscripts
-          git -C buildscripts init
-          git -C buildscripts remote add origin https://github.com/vitasdk/buildscripts.git
-          git -C buildscripts fetch --depth=1 origin '${{ needs.prepare.outputs.buildscripts_sha }}'
-          git -C buildscripts checkout FETCH_HEAD
-          revision='${{ needs.prepare.outputs.buildscripts_sha }}'
-          source_date_epoch=$(git -C buildscripts show -s --format=%ct HEAD)
-          echo "revision=$revision" >> "$GITHUB_OUTPUT"
-          echo "source_date_epoch=$source_date_epoch" >> "$GITHUB_OUTPUT"
-      - name: Download exact vdpm Windows component
-        id: vdpm
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          mkdir vdpm-release
-          gh release download "$VDPM_RELEASE_TAG" --repo vitasdk/vdpm \
-            --pattern 'vdpm-*-x86_64-w64-mingw32.tar.bz2' \
-            --pattern 'vdpm-*-x86_64-w64-mingw32.tar.bz2.sha256' \
-            --dir vdpm-release
-          mapfile -t archives < <(find vdpm-release -maxdepth 1 -type f \
-            -name 'vdpm-*-x86_64-w64-mingw32.tar.bz2')
-          [[ ${#archives[@]} -eq 1 ]]
-          archive=${archives[0]}
-          actual=$(sha256sum "$archive")
-          actual=${actual%% *}
-          [[ $actual == "$VDPM_WINDOWS_SHA256" ]]
-          (cd vdpm-release && sha256sum -c *.tar.bz2.sha256)
-          echo "archive=$PWD/$archive" >> "$GITHUB_OUTPUT"
-      - name: Fetch the build machine's SDK
-        uses: actions/download-artifact@v7
-        with:
-          name: core-linux-x86_64
-          path: build-sdk-artifact
-      - name: Unpack the build machine's SDK
-        shell: bash
-        run: |
-          mapfile -t sdks < <(find build-sdk-artifact -maxdepth 1 -type f \
-            -name 'vitasdk-*.tar.bz2' ! -name 'vitasdk-bootstrap-*')
-          [[ ${#sdks[@]} -eq 1 ]]
-          mkdir -p build-sdk
-          tar -xjf "${sdks[0]}" -C build-sdk
-          STAGE1_DIR=$(dirname "$(dirname "$(dirname "$(find "$PWD/build-sdk" -type f -path '*/arm-vita-eabi/lib/libc.a' | head -1)")")")
-          test -n "$STAGE1_DIR"
-          echo "STAGE1_DIR=$STAGE1_DIR" >> "$GITHUB_ENV"
-          # gcc runs arm-vita-eabi-gcc -dumpspecs during all-gcc; this is the
-          # one that runs here.
-          echo "$STAGE1_DIR/bin" >> "$GITHUB_PATH"
-      - name: Build Windows core package, bootstrap and compatibility archive
-        shell: bash
-        run: |
-          unset CC CXX
-          cmake -S buildscripts -B buildscripts/build \
-            -DCMAKE_TOOLCHAIN_FILE="$PWD/buildscripts/toolchain-x86_64-w64-mingw32.cmake" \
-            -DVITASDK_STAGE1_DIR="$STAGE1_DIR" \
-            -DBUILD_PACMAN_CLIENT=ON \
-            -DVDPM_BUNDLE='${{ steps.vdpm.outputs.archive }}' \
-            -DVDPM_BUNDLE_SHA256="$VDPM_WINDOWS_SHA256" \
-            -DVITASDK_PACKAGE_VERSION='${{ needs.prepare.outputs.package_version }}' \
-            -DVITASDK_SOURCE_DATE_EPOCH='${{ steps.source.outputs.source_date_epoch }}' \
-            -DVITASDK_SOURCE_REVISION='${{ steps.source.outputs.revision }}'
-          cmake --build buildscripts/build \
-            --target core-package bootstrap-archive tarball --parallel "$(nproc)"
-      - name: Dump configure logs on failure
-        if: failure()
-        shell: bash
-        run: |
-          logs=()
-          while IFS= read -r log; do
-            logs+=("$log")
-          done < <(find buildscripts/build -type f -name config.log 2>/dev/null)
-          if [[ ${#logs[@]} -eq 0 ]]; then
-            echo "no config.log found under buildscripts/build"
-            exit 0
-          fi
-          selected=$(ls -t -- "${logs[@]}" 2>/dev/null | head -n 5) || true
-          while IFS= read -r log; do
-            [[ -n $log ]] || continue
-            echo "::group::$log"
-            tail -n 150 "$log"
-            echo "::endgroup::"
-          done <<< "$selected"
-      - name: Stage Windows host artifacts
-        shell: bash
-        run: |
-          mkdir host-artifacts
-          # A core release is the toolchain and the client that installs it.
-          # Leaving the client behind publishes a core whose dependency
-          # nothing in the repository can satisfy.
-          cp buildscripts/build/packages/vitasdk-core-*.pkg.tar.xz \
-            buildscripts/build/packages/vdpm-*.pkg.tar.xz \
-            buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2 \
-            buildscripts/build/bootstraps/vitasdk-bootstrap-*.tar.bz2.sha256 \
-            buildscripts/build/vitasdk-*.tar.bz2 host-artifacts/
-      - name: Upload Windows host artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: core-windows-x86_64
-          path: host-artifacts/*
-          if-no-files-found: error
-          retention-days: 14
-
-  test-windows-bootstrap:
-    needs: [prepare, build-windows]
-    runs-on: windows-2025
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: core-windows-x86_64
-          path: artifacts
-      - name: Check out the matching bootstrap frontend
-        shell: pwsh
-        run: |
-          git clone --depth=1 --branch $env:VDPM_RELEASE_TAG `
-            https://github.com/vitasdk/vdpm.git vdpm
-      - name: Exercise clean Windows bootstrap
-        shell: pwsh
-        run: |
-          $archives = @(Get-ChildItem artifacts -Recurse -Filter 'vitasdk-bootstrap-*.tar.bz2')
-          if ($archives.Count -ne 1) { throw 'expected exactly one Windows bootstrap' }
-          $archive = $archives[0].FullName
-          $checksum = Get-Content "${archive}.sha256"
-          $digest = ($checksum -split '\s+')[0]
-          $installRoot = Join-Path $env:RUNNER_TEMP 'vitasdk-bootstrap-installed'
-          ./vdpm/bootstrap-vitasdk.ps1 `
-            -ArchivePath $archive -Sha256 $digest -InstallDirectory $installRoot
-          $env:VITASDK = $installRoot
-          & (Join-Path $installRoot 'bin/vdpm.exe') --help | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw 'vdpm self-test failed' }
-          & (Join-Path $installRoot 'share/vdpm/msys/usr/bin/pacman.exe') --version | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw 'Pacman self-test failed' }
-          & (Join-Path $installRoot 'bin/arm-vita-eabi-gcc.exe') --version
-          if ($LASTEXITCODE -ne 0) { throw 'compiler self-test failed' }
-
-  create-grouped-release:
-    needs: [prepare, build-core, build-windows, test-windows-bootstrap]
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          path: inputs
-          pattern: core-*
-          merge-multiple: true
-      - name: Create grouped host repositories
-        shell: bash
-        run: |
-          expected=(
-            x86_64-linux-gnu
-            aarch64-linux-gnu
-            arm64-apple-darwin
-            x86_64-w64-mingw32
-          )
-          for host in "${expected[@]}"; do
-            test -f "inputs/vitasdk-bootstrap-$host.tar.bz2"
-            compgen -G "inputs/vitasdk-core-*-$host.pkg.tar.*" >/dev/null
-            compgen -G "inputs/vdpm-*-$host.pkg.tar.*" >/dev/null
+            }
           done
-          docker run --rm \
-            --platform linux/amd64 \
-            --user "$(id -u):$(id -g)" \
-            --mount "type=bind,source=$PWD,target=/workspace,readonly" \
-            --mount "type=bind,source=$PWD/inputs,target=/input,readonly" \
-            --mount "type=bind,source=$RUNNER_TEMP,target=/output" \
-            --env SDK_ARCHIVE_DIRECTORY=/input \
-            archlinux@sha256:c1829f370be8434135f43fb3acaef1256780804ac3b2d2eec90dfb1232e1ffdf \
-            bash -euc '
-              first_package=$(printf "%s\n" /input/vitasdk-core-*.pkg.tar.* | sort | head -n1)
-              SOURCE_DATE_EPOCH=$(bsdtar -xOf "$first_package" .PKGINFO |
-                awk -F " = " '\''$1 == "builddate" { print $2; exit }'\'')
-              export SOURCE_DATE_EPOCH
-              /workspace/scripts/create-core-repositories.sh \
-                /output/repository /input/vitasdk-core-*.pkg.tar.* \
-                /input/vdpm-*.pkg.tar.*
-            '
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: grouped-sdk-snapshot
-          path: ${{ runner.temp }}/repository/*
-          if-no-files-found: error
-          retention-days: 14
+  build:
+    needs: prepare
+    uses: vitasdk/buildscripts/.github/workflows/build-sdk.yml@master
+    with:
+      lock: ${{ needs.prepare.outputs.lock }}
 
   publish-snapshot:
-    needs: [prepare, create-grouped-release]
+    needs: [prepare, build]
     if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     permissions:
@@ -437,17 +87,38 @@ jobs:
       snapshot_tag: ${{ steps.publish.outputs.snapshot_tag }}
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/checkout@v7
+        with:
+          repository: vitasdk/buildscripts
+          ref: ${{ needs.prepare.outputs.buildscripts_revision }}
+          path: buildscripts
+
       - uses: actions/download-artifact@v8
         with:
-          name: grouped-sdk-snapshot
+          name: ${{ needs.build.outputs.release_tree_artifact }}
           path: repository
-      - name: Validate downloaded release transaction
+
+      - name: Verify the grouped release tree
+        shell: bash
+        run: buildscripts/buildscripts-ci verify --tree repository
+
+      - name: Enforce the required-host publication policy
         shell: bash
         run: |
-          docker run --rm --platform linux/amd64 \
-            --mount "type=bind,source=$PWD,target=/workspace,readonly" \
-            archlinux@sha256:c1829f370be8434135f43fb3acaef1256780804ac3b2d2eec90dfb1232e1ffdf \
-            /workspace/scripts/validate-core-repositories.sh /workspace/repository
+          tree_build_id=$(jq -r .build_id repository/release.json)
+          [[ $tree_build_id == '${{ needs.prepare.outputs.build_id }}' ]] || {
+            echo "::error::release tree build_id $tree_build_id does not match the lock's ${{ needs.prepare.outputs.build_id }}"
+            exit 1
+          }
+          published_hosts=$(jq -r '.hosts[].name' repository/release.json | LC_ALL=C sort -u)
+          for host in $REQUIRED_HOSTS; do
+            grep -qxF "$host" <<<"$published_hosts" || {
+              echo "::error::required host $host is missing from the published release tree"
+              exit 1
+            }
+          done
+
       - name: Publish immutable grouped snapshot
         id: publish
         env:
@@ -458,7 +129,7 @@ jobs:
           echo "snapshot_tag=$snapshot_tag" >> "$GITHUB_OUTPUT"
           gh release create "$snapshot_tag" --draft --prerelease \
             --target "$GITHUB_SHA" --title "$snapshot_tag" \
-            --notes "Package-managed SDK preview built from buildscripts revision ${{ needs.prepare.outputs.buildscripts_sha }}."
+            --notes "Package-managed SDK preview built from buildscripts revision ${{ needs.prepare.outputs.buildscripts_revision }}."
           gh release upload "$snapshot_tag" repository/*
           mkdir downloaded-release
           gh release download "$snapshot_tag" --dir downloaded-release
