@@ -1,0 +1,35 @@
+name: Checks
+
+# The tests in this repository had nothing running them: they passed on
+# whoever remembered to run them by hand.
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: autobuilds
+
+      - name: Check out the recipes the pipeline contracts read
+        uses: actions/checkout@v7
+        with:
+          repository: vitasdk/packages
+          path: packages
+
+      - name: Install what the tests import
+        shell: bash
+        run: python3 -c 'import yaml' 2>/dev/null || sudo apt-get install -y python3-yaml
+
+      - name: Run the tests
+        shell: bash
+        working-directory: autobuilds
+        run: |
+          for test in tests/test-*.sh; do
+            echo "== $test"
+            "$test"
+          done
