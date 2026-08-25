@@ -7,9 +7,18 @@ on:
         description: Branch, tag or commit from vitasdk/buildscripts
         required: false
         type: string
+      profile:
+        description: World to build (leave empty for the policy default)
+        required: false
+        type: string
   push:
     branches: [master]
   pull_request:
+  # A backstop, not the trigger: buildscripts announces every revision it
+  # takes, and this catches the announcement that never arrived. An input
+  # already built stops at describe, so an idle run costs one job.
+  schedule:
+    - cron: "20 */6 * * *"
   repository_dispatch:
     types: [run_build]
 
@@ -18,8 +27,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Which world this workflow drives; softfp wiring is separate follow-up work.
-  PROFILE: vita
+  # The world this workflow drives unless a trigger names another one.
+  DEFAULT_PROFILE: vita
   # Release policy, not build knowledge: which hosts must publish.
   REQUIRED_HOSTS: "x86_64-linux-gnu aarch64-linux-gnu arm64-apple-darwin x86_64-w64-mingw32"
 
@@ -32,13 +41,34 @@ jobs:
       build_id: ${{ steps.describe.outputs.build_id }}
       version: ${{ steps.describe.outputs.version }}
       series: ${{ steps.describe.outputs.series }}
+      profile: ${{ steps.ref.outputs.profile }}
       lock: ${{ steps.describe.outputs.lock }}
     steps:
       - id: ref
         shell: bash
+        env:
+          # Whoever asks for a build says which revision and which world;
+          # a schedule or a plain push asks for the policy default.
+          REQUESTED_REF: ${{ inputs.buildscripts_ref || github.event.client_payload.buildscripts_ref }}
+          REQUESTED_PROFILE: ${{ inputs.profile || github.event.client_payload.profile }}
         run: |
-          raw_ref='${{ inputs.buildscripts_ref }}'
-          echo "ref=${raw_ref:-master}" >> "$GITHUB_OUTPUT"
+          ref=${REQUESTED_REF:-master}
+          profile=${REQUESTED_PROFILE:-$DEFAULT_PROFILE}
+          # Whoever dispatches writes these; a value carrying a newline
+          # would write a second output of its choosing, and one of the
+          # outputs here decides whether the build runs at all.
+          [[ $ref =~ ^[A-Za-z0-9._/-]+$ ]] || {
+            echo "::error::refusing a buildscripts ref that is not a plain git ref"
+            exit 1
+          }
+          [[ $profile =~ ^[A-Za-z0-9._-]+$ ]] || {
+            echo "::error::refusing a profile name that is not a plain world name"
+            exit 1
+          }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "profile=$profile" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
 
       - uses: actions/checkout@v7
         with:
@@ -50,6 +80,8 @@ jobs:
       - id: describe
         shell: bash
         working-directory: buildscripts
+        env:
+          PROFILE: ${{ steps.ref.outputs.profile }}
         run: |
           lock_path="$RUNNER_TEMP/lock.json"
           ./buildscripts-ci describe --profile "$PROFILE" --output "$lock_path"
