@@ -43,6 +43,7 @@ jobs:
       series: ${{ steps.describe.outputs.series }}
       profile: ${{ steps.ref.outputs.profile }}
       lock: ${{ steps.describe.outputs.lock }}
+      duplicate: ${{ steps.dedup.outputs.duplicate }}
     steps:
       - id: ref
         shell: bash
@@ -106,8 +107,35 @@ jobs:
             }
           done
 
+      - name: Stop if this input already has a published snapshot
+        id: dedup
+        # Never on a pull request: the input under test is whatever
+        # buildscripts master holds, so every pull request would find its
+        # own snapshot published and go green having built nothing.
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_ID: ${{ steps.describe.outputs.build_id }}
+        shell: bash
+        run: |
+          # Newest first, one page: deeper than any rebuild of an old input
+          # would reach, and a single request.
+          gh api "repos/${{ github.repository }}/releases?per_page=100" \
+            > "$RUNNER_TEMP/releases.json"
+          published=$(python3 scripts/find-built-snapshot.py \
+            --build-id "$BUILD_ID" --releases "$RUNNER_TEMP/releases.json")
+          if [[ -n $published ]]; then
+            echo "duplicate=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$BUILD_ID is already published as $published; nothing to build"
+          else
+            echo "duplicate=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     needs: prepare
+    # The deduplication key is the build input, never the run number: the
+    # same revision and world announced twice builds once.
+    if: needs.prepare.outputs.duplicate != 'true'
     uses: vitasdk/buildscripts/.github/workflows/build-sdk.yml@master
     with:
       lock: ${{ needs.prepare.outputs.lock }}
@@ -168,9 +196,18 @@ jobs:
           printf '%s\n' "$LOCK_JSON" > publish/lock.json
           snapshot_tag="sdk-snapshot-$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           echo "snapshot_tag=$snapshot_tag" >> "$GITHUB_OUTPUT"
+          # The build_id line is what the next run reads to know this input
+          # is already published; keep it a line of its own.
+          cat > "$RUNNER_TEMP/notes.md" <<NOTES
+          Package-managed SDK preview built from buildscripts revision ${{ needs.prepare.outputs.buildscripts_revision }}.
+
+          build_id: ${{ needs.prepare.outputs.build_id }}
+          profile: ${{ needs.prepare.outputs.profile }}
+          version: ${{ needs.prepare.outputs.version }}
+          NOTES
           gh release create "$snapshot_tag" --draft --prerelease \
             --target "$GITHUB_SHA" --title "$snapshot_tag" \
-            --notes "Package-managed SDK preview built from buildscripts revision ${{ needs.prepare.outputs.buildscripts_revision }}."
+            --notes-file "$RUNNER_TEMP/notes.md"
           gh release upload "$snapshot_tag" publish/*
           mkdir downloaded-release
           gh release download "$snapshot_tag" --dir downloaded-release
