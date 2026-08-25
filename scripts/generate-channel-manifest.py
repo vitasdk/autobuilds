@@ -13,13 +13,6 @@ import subprocess
 import sys
 import urllib.request
 
-HOST_ARCHITECTURES = [
-    "aarch64-linux-gnu",
-    "arm64-apple-darwin",
-    "x86_64-linux-gnu",
-    "x86_64-w64-mingw32",
-]
-
 def fetch_sha256(url: str) -> str:
     """Download a file or sidecar and compute/extract SHA256 digest."""
     req = urllib.request.Request(url, headers={"User-Agent": "vitasdk-manifest-generator"})
@@ -47,6 +40,43 @@ def get_digest(base_url: str, asset_name: str, local_dir: str = None) -> str:
     except Exception:
         asset_url = f"{base_url}/{asset_name}"
         return fetch_sha256(asset_url)
+
+def core_hosts(core_repository: str, core_release: str, core_dir: str = None) -> list:
+    """Which hosts a core release actually published.
+
+    Read off the release rather than listed here: the manifest maps one
+    database per host, so the databases a release carries *are* its hosts,
+    and there is no second list to fall behind. This one did -- the core
+    published nine hosts while the channel kept offering four, so musl,
+    FreeBSD and Intel macOS had a core nobody could install.
+
+    An older release simply carries fewer, which is what a series pinned to
+    an old core needs.
+    """
+
+    if core_dir:
+        names = os.listdir(core_dir)
+    else:
+        url = f"https://api.github.com/repos/{core_repository}/releases/tags/{core_release}"
+        request = urllib.request.Request(url, headers={
+            "User-Agent": "vitasdk-manifest-generator",
+            "Accept": "application/vnd.github+json",
+        })
+        # Anonymous quota on a runner is shared and routinely spent; without
+        # this the failure arrives as a bare 403.
+        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+        if token:
+            request.add_header("Authorization", f"Bearer {token}")
+        with urllib.request.urlopen(request) as response:
+            names = [asset["name"] for asset in json.load(response)["assets"]]
+
+    hosts = sorted(name[:-len(".db")] for name in names if name.endswith(".db"))
+    if not hosts:
+        raise SystemExit(
+            f"ERROR: {core_release} carries no host database, so there is "
+            "nothing to offer; refusing to publish a channel with no hosts")
+    return hosts
+
 
 def read_deprecated(path):
     """The deprecated packages published with the snapshot, if it carries any.
@@ -84,7 +114,7 @@ def build_manifest(
     packages_base = f"https://github.com/{packages_repository}/releases/download/{packages_release}"
 
     architectures = {}
-    for host in HOST_ARCHITECTURES:
+    for host in core_hosts(core_repository, core_release, core_dir):
         db_name = f"{host}.db"
         digest = get_digest(core_base, db_name, core_dir)
         architectures[host] = {
