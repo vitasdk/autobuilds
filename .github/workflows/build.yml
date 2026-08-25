@@ -31,6 +31,7 @@ jobs:
       buildscripts_revision: ${{ steps.describe.outputs.buildscripts_revision }}
       build_id: ${{ steps.describe.outputs.build_id }}
       version: ${{ steps.describe.outputs.version }}
+      series: ${{ steps.describe.outputs.series }}
       lock: ${{ steps.describe.outputs.lock }}
     steps:
       - id: ref
@@ -57,7 +58,9 @@ jobs:
             cat "$lock_path"
             echo "LOCK_JSON_EOF"
           } >> "$GITHUB_OUTPUT"
-          jq -r '"build_id=\(.build_id)", "buildscripts_revision=\(.buildscripts_revision)", "version=\(.version)"' \
+          # series is null for a nightly and the series name for a
+          # release, so the announcement below never has to guess.
+          jq -r '"build_id=\(.build_id)", "buildscripts_revision=\(.buildscripts_revision)", "version=\(.version)", "series=\(.series // "")"' \
             "$lock_path" >> "$GITHUB_OUTPUT"
 
       - name: Check the required hosts are buildable at this revision
@@ -156,4 +159,5 @@ jobs:
           fi
           gh api repos/vitasdk/vitasdk-autobuild/dispatches \
             -f event_type=core_published \
-            -f client_payload[core_snapshot]="${{ steps.publish.outputs.snapshot_tag }}"
+            -f client_payload[core_snapshot]="${{ steps.publish.outputs.snapshot_tag }}" \
+            -f client_payload[series]="${{ needs.prepare.outputs.series }}"
