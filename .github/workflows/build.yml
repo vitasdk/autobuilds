@@ -22,8 +22,16 @@ on:
   repository_dispatch:
     types: [run_build]
 
+# Which build this is, is the lock's build_id, and describe computes it inside
+# the run -- too late for a group named here. A pull request stays keyed on its
+# ref so a new push still cancels the run it superseded; every other trigger
+# gets a group of its own. One queue slot shared by all of them is what let a
+# push to this repository evict the revision buildscripts had just announced:
+# a run held in a group is cancelled, not delayed. The same input arriving
+# twice is handled where the input is known -- dedup in prepare, and the
+# build_id group on the build job.
 concurrency:
-  group: autobuilds-${{ github.workflow }}-${{ github.ref }}
+  group: autobuilds-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -185,6 +193,12 @@ jobs:
     # The deduplication key is the build input, never the run number: the
     # same revision and world announced twice builds once.
     if: needs.prepare.outputs.duplicate != 'true'
+    # The queue this run does belong in, now that describe has named the
+    # input: two runs of one build_id serialize, two different ones never
+    # meet.
+    concurrency:
+      group: autobuilds-build-${{ needs.prepare.outputs.build_id }}
+      cancel-in-progress: false
     uses: vitasdk/buildscripts/.github/workflows/build-sdk.yml@master
     with:
       lock: ${{ needs.prepare.outputs.lock }}
