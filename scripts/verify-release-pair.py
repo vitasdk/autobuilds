@@ -73,6 +73,22 @@ def check_provenance(provenance, core_release, packages_release):
             f"offer it beside {core_release!r}.")
 
 
+def check_world(lock, world, core_release):
+    """The pair belongs to the world the series is of.
+
+    Two worlds are built from the same sources with different target ABIs, so
+    a core of the wrong one installs and then miscompiles everything it
+    touches. The lock says which one it was built as.
+    """
+    if not world:
+        return
+    profile = lock.get("profile")
+    if profile != world:
+        raise SystemExit(
+            f"ERROR: {core_release} was built as the {profile!r} world, and "
+            f"this channel serves {world!r}.")
+
+
 def check_buildscripts_revision(lock, provenance, expected):
     """Both halves name the same buildscripts revision, when they name one.
 
@@ -101,6 +117,8 @@ def main():
     parser.add_argument("--packages-release", required=True)
     parser.add_argument("--packages-repository", default="vitasdk/packages")
     parser.add_argument("--channel", required=True)
+    parser.add_argument("--world", default="",
+                        help="World the channel serves; the core must be of it")
     parser.add_argument("--buildscripts-sha", default="",
                         help="Exact buildscripts commit both halves must name")
     parser.add_argument("--core-lock", help="Local lock.json, instead of downloading it")
@@ -115,6 +133,7 @@ def main():
 
     check_provenance(provenance, args.core_release, args.packages_release)
     check_series(lock, args.channel, args.core_release)
+    check_world(lock, args.world, args.core_release)
     check_buildscripts_revision(lock, provenance, args.buildscripts_sha)
 
     print(f"{args.channel}: core {args.core_release} (version "

@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Which series a commit repoints, and whether the entries make sense.
+
+A release is a human decision, and the auditable form of one is a commit:
+channels.json says which exact pair each series serves, and moving a series
+is an edit to it. That makes the promotion reviewable before it happens
+rather than a dispatch somebody typed, and it makes the current pointer
+readable without asking a workflow what it did last.
+
+nightly is deliberately not in here. It moves on its own, several times a
+day, and storing its pair would mean a bot commit per build; its pair lives
+in the signed manifest and in the state branch. What nightly keeps here is
+its name and status, for the index.
+"""
+
+import argparse
+import json
+import pathlib
+import sys
+
+POINTER = ("core", "packages", "world")
+AUTOMATIC = ("nightly",)
+
+
+class PromotionError(Exception):
+    pass
+
+
+def read(path):
+    if path is None:
+        return {}
+    text = pathlib.Path(path).read_text(encoding="utf-8")
+    if not text.strip():
+        return {}
+    document = json.loads(text)
+    if not isinstance(document, dict):
+        raise PromotionError(f"{path} is not an object of series")
+    return document
+
+
+def pointer_of(name, entry):
+    """The pair a series serves, or None when it has none at all."""
+    if not isinstance(entry, dict):
+        raise PromotionError(f"{name} is not an object")
+    present = [field for field in POINTER if entry.get(field)]
+    if not present:
+        return None
+    if name in AUTOMATIC:
+        raise PromotionError(
+            f"{name} moves on its own and its pair lives in the signed "
+            f"manifest; remove {', '.join(present)} from it")
+    missing = [field for field in POINTER if not entry.get(field)]
+    if missing:
+        raise PromotionError(
+            f"{name} names {', '.join(present)} but not {', '.join(missing)}: "
+            "a series serves an exact pair or none at all")
+    return {field: entry[field] for field in POINTER}
+
+
+def promotions(before, after):
+    """Every series whose pair this change moved, in file order."""
+    moved = []
+    for name, entry in after.items():
+        new = pointer_of(name, entry)
+        old = pointer_of(name, before.get(name, {}))
+        if new is None:
+            if old is not None:
+                raise PromotionError(
+                    f"{name} used to serve {old['core']} and now serves "
+                    "nothing; a series keeps its pair until it is deleted")
+            continue
+        if new != old:
+            moved.append({"name": name, **new})
+    return moved
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--before", help="channels.json as it was, omitted when there was none")
+    parser.add_argument("--after", required=True, help="channels.json as it is now")
+    parser.add_argument("--format", choices=("json", "lines"), default="json")
+    args = parser.parse_args(argv)
+
+    try:
+        moved = promotions(read(args.before), read(args.after))
+    except (PromotionError, json.JSONDecodeError) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+
+    if args.format == "json":
+        json.dump(moved, sys.stdout, sort_keys=True)
+        print()
+    else:
+        for promotion in moved:
+            print(f"{promotion['name']} {promotion['core']} "
+                  f"{promotion['packages']} {promotion['world']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
