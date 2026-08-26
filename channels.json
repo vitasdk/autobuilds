@@ -1,7 +1,10 @@
 {
   "2026.08": {
+    "core": "sdk-snapshot-20260825.611.1",
+    "packages": "packages-2026.08-snapshot-20260825.19.1",
     "status": "supported",
-    "summary": "What most homebrew is built against. Newlib 4.1."
+    "summary": "What most homebrew is built against. Newlib 4.1.",
+    "world": "vita"
   },
   "nightly": {
     "status": "development",

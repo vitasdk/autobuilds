@@ -33,3 +33,39 @@ jobs:
             echo "== $test"
             "$test"
           done
+
+  # A promotion is a commit editing channels.json, so a valid merge has to be
+  # a valid release rather than a bet on one: the pair it names is checked
+  # here, before anybody presses merge.
+  promotions:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate every series this branch repoints
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGES_REPOSITORY: vitasdk/vitasdk-autobuild
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git show "$BASE_SHA:channels.json" > "$RUNNER_TEMP/before.json" 2>/dev/null ||
+            : > "$RUNNER_TEMP/before.json"
+          moved=$(python3 scripts/promotions.py \
+            --before "$RUNNER_TEMP/before.json" --after channels.json --format lines)
+          if [[ -z $moved ]]; then
+            echo "::notice::this branch repoints no series"
+            exit 0
+          fi
+          while read -r name core packages world; do
+            echo "== $name -> $core + $packages ($world)"
+            python3 scripts/verify-release-pair.py \
+              --core-release "$core" \
+              --packages-release "$packages" \
+              --packages-repository "$PACKAGES_REPOSITORY" \
+              --channel "$name" \
+              --world "$world"
+          done <<< "$moved"
