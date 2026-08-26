@@ -117,19 +117,26 @@ echo "PASS: Test E (the provenance download writes nowhere it could collide)"
 
 # --- Test F: repository_dispatch must read the channel, not hardcode it ---
 echo "--- Test F: channel comes from the dispatch payload, not a literal ---"
-if grep -q "chan='nightly'" "$AUTOBUILDS_ROOT/.github/workflows/channel.yml"; then
-    echo "FAIL: channel.yml still hardcodes the repository_dispatch channel to nightly" >&2
-    exit 1
-fi
-grep -q "chan='\${{ github.event.client_payload.channel }}'" \
-    "$AUTOBUILDS_ROOT/.github/workflows/channel.yml" || {
-    echo "FAIL: channel.yml does not read channel from client_payload.channel" >&2
-    exit 1
-}
-grep -q '\-z "\$chan"' "$AUTOBUILDS_ROOT/.github/workflows/channel.yml" || {
-    echo "FAIL: channel.yml does not require channel like it requires core/packages" >&2
-    exit 1
-}
+python3 - "$AUTOBUILDS_ROOT/.github/workflows/channel.yml" <<'PYEOF'
+import re, sys, yaml
+
+path = sys.argv[1]
+text = open(path).read()
+doc = yaml.safe_load(text)
+resolve = next(s for s in doc["jobs"]["promotions"]["steps"] if s.get("id") == "resolve")
+environment = resolve.get("env", {})
+
+channel = str(environment.get("CHANNEL", ""))
+if "github.event.client_payload.channel" not in channel:
+    sys.exit("FAIL: the channel a dispatch publishes to does not come from its payload")
+if re.search(r"\bnightly\b", channel):
+    sys.exit("FAIL: the dispatch channel falls back to a hardcoded nightly")
+
+# Every parameter a dispatch has to carry, refused when it does not.
+for variable in ("CORE", "PACKAGES", "CHANNEL"):
+    if f"-z ${variable}" not in resolve["run"]:
+        sys.exit(f"FAIL: a dispatch missing {variable} is not refused")
+PYEOF
 echo "PASS: Test F (channel comes from the dispatch payload)"
 
 # --- Test G: two publishes for the same channel must not race ---

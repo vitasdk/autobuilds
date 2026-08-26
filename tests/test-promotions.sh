@@ -103,6 +103,36 @@ sys.exit('2026.08 serves no pair: missing ' + ', '.join(missing) if missing else
 	failures=$((failures + 1))
 fi
 
+# And the commit has to reach the thing that publishes it.
+while IFS= read -r problem; do
+	printf 'FAIL: %s\n' "$problem" >&2
+	failures=$((failures + 1))
+done < <(python3 - "$directory/.github/workflows/channel.yml" <<'PYEOF'
+import sys, yaml
+
+document = yaml.safe_load(open(sys.argv[1]))
+triggers = document[True] if True in document else document["on"]
+
+push = triggers.get("push")
+if not push:
+    print("a commit to channels.json publishes nothing: there is no push trigger")
+else:
+    if push.get("paths") != ["channels.json"]:
+        print(f"the push trigger watches {push.get('paths')}, not channels.json alone")
+    if push.get("branches") != ["master"]:
+        print(f"the push trigger watches {push.get('branches')}, not master alone")
+
+publish = document["jobs"].get("update-channel", {})
+if "promotions" not in (publish.get("needs") or []):
+    print("what publishes does not wait for what decides which series moved")
+matrix = ((publish.get("strategy") or {}).get("matrix") or {}).get("entry", "")
+if "needs.promotions.outputs.entries" not in str(matrix):
+    print("what publishes does not read the series from the promotions it found")
+if "!= '[]'" not in str(publish.get("if", "")):
+    print("a commit that repoints nothing would still try to publish")
+PYEOF
+)
+
 if (( failures )); then
 	printf '%d promotion check(s) failed\n' "$failures" >&2
 	exit 1

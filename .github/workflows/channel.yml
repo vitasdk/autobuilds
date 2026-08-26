@@ -34,15 +34,79 @@ on:
         type: string
   repository_dispatch:
     types: [update_channel]
+  # A promotion is the commit that edits channels.json, so publishing it is
+  # what happens when that commit lands. The pull request checked the pair
+  # before the merge; this checks it again, because it is cheap and because
+  # a snapshot is immutable but a file is not.
+  push:
+    branches: [master]
+    paths:
+      - channels.json
 
 permissions:
   contents: write
 
 jobs:
-  update-channel:
+  promotions:
     runs-on: ubuntu-24.04
+    outputs:
+      entries: ${{ steps.resolve.outputs.entries }}
+      sequence: ${{ steps.resolve.outputs.sequence }}
+      buildscripts_sha: ${{ steps.resolve.outputs.buildscripts_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The promotion is the difference between two commits of one file.
+          fetch-depth: 0
+
+      - id: resolve
+        shell: bash
+        env:
+          CORE: ${{ inputs.core_release || github.event.client_payload.core_snapshot }}
+          PACKAGES: ${{ inputs.packages_release || github.event.client_payload.packages_snapshot }}
+          CHANNEL: ${{ inputs.channel || github.event.client_payload.channel }}
+          SEQUENCE: ${{ inputs.sequence }}
+          BUILDSCRIPTS_SHA: ${{ inputs.buildscripts_sha || github.event.client_payload.buildscripts_sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [[ '${{ github.event_name }}' == push ]]; then
+            git show "$BEFORE:channels.json" > "$RUNNER_TEMP/before.json" 2>/dev/null ||
+              : > "$RUNNER_TEMP/before.json"
+            entries=$(python3 scripts/promotions.py \
+              --before "$RUNNER_TEMP/before.json" --after channels.json)
+          else
+            # A dispatch says everything itself: nightly's pair is not in the
+            # file, and neither is a promotion somebody is replaying by hand.
+            if [[ -z $CORE || -z $PACKAGES || -z $CHANNEL ]]; then
+              echo "::error::core_release, packages_release and channel must all be explicitly provided (no default fallback allowed)"
+              exit 1
+            fi
+            entries=$(jq -nc --arg name "$CHANNEL" --arg core "$CORE" \
+              --arg packages "$PACKAGES" \
+              '[{name: $name, core: $core, packages: $packages, world: ""}]')
+          fi
+          echo "entries=$entries" >> "$GITHUB_OUTPUT"
+          echo "buildscripts_sha=$BUILDSCRIPTS_SHA" >> "$GITHUB_OUTPUT"
+          if [[ $entries == "[]" ]]; then
+            echo "::notice::this commit repoints no series"
+          else
+            echo "::notice::publishing $entries"
+          fi
+          # Monotonic per channel, and one number for everything this run
+          # publishes: the client compares sequences within a channel.
+          echo "sequence=${SEQUENCE:-$(date -u +%Y%m%d)${{ github.run_number }}}" >> "$GITHUB_OUTPUT"
+
+  update-channel:
+    needs: promotions
+    if: needs.promotions.outputs.entries != '[]'
+    runs-on: ubuntu-24.04
+    strategy:
+      # One bad pair must not take the other series down with it.
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJson(needs.promotions.outputs.entries) }}
     concurrency:
-      group: channel-${{ github.event.client_payload.channel || inputs.channel || 'dispatch' }}
+      group: channel-${{ matrix.entry.name }}
       cancel-in-progress: false
     env:
       # The catalogue lives in its own repository now. Whoever asks for a
@@ -59,51 +123,18 @@ jobs:
           path: vitasdk.github.io
           token: ${{ secrets.REPO_DISPATCH_TOKEN || github.token }}
 
-      - name: Resolve parameters
-        id: params
-        shell: bash
-        run: |
-          if [[ -n '${{ inputs.core_release }}' ]]; then
-            core='${{ inputs.core_release }}'
-            pkgs='${{ inputs.packages_release }}'
-            chan='${{ inputs.channel }}'
-            seq='${{ inputs.sequence }}'
-            b_sha='${{ inputs.buildscripts_sha }}'
-          elif [[ -n '${{ github.event.client_payload.packages_snapshot }}' ]]; then
-            pkgs='${{ github.event.client_payload.packages_snapshot }}'
-            core='${{ github.event.client_payload.core_snapshot }}'
-            chan='${{ github.event.client_payload.channel }}'
-            seq=""
-            b_sha='${{ github.event.client_payload.buildscripts_sha }}'
-          fi
-
-          if [[ -z "$core" || -z "$pkgs" || -z "$chan" ]]; then
-            echo "::error::core_release, packages_release and channel must all be explicitly provided (no default fallback allowed)"
-            exit 1
-          fi
-          
-          if [[ -z "$seq" ]]; then
-            # Generate monotonic sequence number based on timestamp and run number
-            seq=$(date -u +%Y%m%d)${{ github.run_number }}
-          fi
-          
-          echo "core_release=$core" >> "$GITHUB_OUTPUT"
-          echo "packages_release=$pkgs" >> "$GITHUB_OUTPUT"
-          echo "channel=$chan" >> "$GITHUB_OUTPUT"
-          echo "sequence=$seq" >> "$GITHUB_OUTPUT"
-          echo "buildscripts_sha=$b_sha" >> "$GITHUB_OUTPUT"
-
       - name: Verify the pair belongs to the channel
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/verify-release-pair.py \
-            --core-release '${{ steps.params.outputs.core_release }}' \
-            --packages-release '${{ steps.params.outputs.packages_release }}' \
+            --core-release '${{ matrix.entry.core }}' \
+            --packages-release '${{ matrix.entry.packages }}' \
             --packages-repository "$PACKAGES_REPOSITORY" \
-            --channel '${{ steps.params.outputs.channel }}' \
-            --buildscripts-sha '${{ steps.params.outputs.buildscripts_sha }}'
+            --channel '${{ matrix.entry.name }}' \
+            --world '${{ matrix.entry.world }}' \
+            --buildscripts-sha '${{ needs.promotions.outputs.buildscripts_sha }}'
 
       # Nightly moves to the newest candidate and to nothing else. Packages
       # for a core that was overtaken while they built still arrive, and they
@@ -111,11 +142,11 @@ jobs:
       # has a commit, so this is nightly's question alone.
       - name: Is this still the candidate
         id: candidate
-        if: steps.params.outputs.channel == 'nightly'
+        if: matrix.entry.name == 'nightly'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          CORE: ${{ steps.params.outputs.core_release }}
+          CORE: ${{ matrix.entry.core }}
           STATE_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
         run: |
           profile=$(gh release download "$CORE" --repo '${{ github.repository }}' \
@@ -141,7 +172,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release download '${{ steps.params.outputs.packages_release }}' \
+          if gh release download '${{ matrix.entry.packages }}' \
                --repo "$PACKAGES_REPOSITORY" \
                --pattern "deprecated.json" --output "$RUNNER_TEMP/deprecated.json"; then
             echo "deprecated=$RUNNER_TEMP/deprecated.json" >> "$GITHUB_ENV"
@@ -160,10 +191,10 @@ jobs:
           echo "$SIGNING_KEY" > "$key_file"
           
           python3 scripts/generate-channel-manifest.py \
-            --core-release '${{ steps.params.outputs.core_release }}' \
-            --packages-release '${{ steps.params.outputs.packages_release }}' \
-            --channel '${{ steps.params.outputs.channel }}' \
-            --sequence '${{ steps.params.outputs.sequence }}' \
+            --core-release '${{ matrix.entry.core }}' \
+            --packages-release '${{ matrix.entry.packages }}' \
+            --channel '${{ matrix.entry.name }}' \
+            --sequence '${{ needs.promotions.outputs.sequence }}' \
             --packages-repository "$PACKAGES_REPOSITORY" \
             ${deprecated:+--deprecated "$deprecated"} \
             --key "$key_file" \
@@ -195,7 +226,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add channels/
-          git commit -m "channel: update ${{ steps.params.outputs.channel }} to core ${{ steps.params.outputs.core_release }} and packages ${{ steps.params.outputs.packages_release }}" || exit 0
+          git commit -m "channel: update ${{ matrix.entry.name }} to core ${{ matrix.entry.core }} and packages ${{ matrix.entry.packages }}" || exit 0
           git push origin master
 
       # Pages deploys after the push, not with it. Announcing the channel
@@ -207,7 +238,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          channel='${{ steps.params.outputs.channel }}'
+          channel='${{ matrix.entry.name }}'
           expected=$(sha256sum "vitasdk.github.io/channels/$channel.json" | cut -d' ' -f1)
           url="https://vitasdk.org/channels/$channel.json"
           for attempt in $(seq 1 60); do
@@ -237,4 +268,4 @@ jobs:
           fi
           gh api repos/vitasdk/docker/dispatches \
             -f event_type=channel_published \
-            -f client_payload[channel]="${{ steps.params.outputs.channel }}"
+            -f client_payload[channel]="${{ matrix.entry.name }}"
