@@ -140,9 +140,9 @@ if "build_id" not in template:
     print("the build job's group is not the build_id")
 
 
-def build_context(build_id, run_id):
+def build_context(build_id, run_id, event_name="push"):
     return context(
-        github={"run_id": run_id},
+        github={"run_id": run_id, "event_name": event_name},
         needs={"prepare": {"outputs": {"build_id": build_id}}},
     )
 
@@ -153,6 +153,16 @@ if group(template, build_context("abc", "1")) == group(template, build_context("
     print("two different inputs share the build job's group")
 if build_concurrency.get("cancel-in-progress"):
     print("the build job cancels a build of its own input that is already running")
+
+# A pull request's build_id is whatever buildscripts master holds, so keying
+# it the same way puts every pull request in the queue of the master builds
+# of that revision -- and a job held in an occupied group is cancelled, not
+# delayed. That is how a candidate ended up with no run producing it.
+pull_request = group(template, build_context("abc", "9", event_name="pull_request"))
+if pull_request == group(template, build_context("abc", "1")):
+    print("a pull request shares the build group of a master build of the same input, and evicts it")
+if pull_request == group(template, build_context("abc", "8", event_name="pull_request")):
+    print("two pull request runs share a build group, so one cancels the other's build")
 PYEOF
 )
 
