@@ -73,6 +73,27 @@ if None not in (dedup, guard, made):
         print("the version guard runs before the deduplication that would stop it")
     if made < guard:
         print("the candidate is recorded before its version is checked")
+
+# Being refused the candidacy is a decision, not a failure. One input builds
+# once: the second run of it is told so by the state branch, and has to turn
+# that into "nothing to build" rather than into a red run -- or into a build
+# that repeats the one already under way.
+if record is not None:
+    script = str(record.get("run", ""))
+    if "--run" not in script:
+        print("the candidate is recorded without naming the run building it, so a later one cannot ask whether it still is")
+    if "held=true" not in script:
+        print("the candidate step cannot report that another run is already building this input")
+    if "take-over" not in script:
+        print("an input whose holder died would stay held, and never build again")
+
+outputs = build["jobs"]["prepare"].get("outputs") or {}
+duplicate = str(outputs.get("duplicate", ""))
+for source, reason in (
+        ("steps.dedup.outputs.duplicate", "an input that is already published"),
+        ("steps.candidate.outputs.held", "an input another run is already building")):
+    if source not in duplicate:
+        print(f"the prepare job's duplicate output ignores {reason}")
 PYEOF
 )
 

@@ -32,7 +32,7 @@ class StateError(Exception):
 
 
 class Stale(Exception):
-    """A newer candidate exists, so this result no longer decides anything."""
+    """Somebody else holds this: a newer candidate, or this input already."""
 
 
 def git(*arguments, cwd, check=True, capture=True):
@@ -129,10 +129,25 @@ def command_read(args):
 
 def command_record(args):
     def change(document):
+        # The candidate already says an input is being built; what it did not
+        # say is by whom, so a second run of the same input could not tell
+        # "somebody is on it" from "somebody was on it and died". Refusing
+        # here, inside the compare-and-swap, is what makes one input build
+        # once: a run that loses the race stops instead of repeating it. Its
+        # own run is not somebody else -- a re-run has to be able to take the
+        # candidacy back.
+        candidate = document.get("candidate") or {}
+        holder = candidate.get("run")
+        if (not args.take_over
+                and candidate.get("build_id") == args.build_id
+                and candidate.get("status") == "building"
+                and holder and str(holder) != str(args.run)):
+            raise Stale(f"{args.build_id} is already being built by run {holder}")
         document["generation"] = int(document.get("generation", 0)) + 1
         document["candidate"] = {
             "build_id": args.build_id,
             "version": args.version,
+            "run": args.run,
             "core_snapshot": None,
             "status": "building",
         }
@@ -190,12 +205,17 @@ def main(argv):
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     read = subcommands.add_parser("read", help="Print the document, or one field of it")
-    read.add_argument("--field", help="version, build_id, core_snapshot, generation, status")
+    read.add_argument("--field", help="version, build_id, run, core_snapshot, generation, status")
     read.set_defaults(handler=command_read)
 
     record = subcommands.add_parser("record", help="Make this input the candidate")
     record.add_argument("--build-id", required=True)
     record.add_argument("--version", required=True)
+    record.add_argument("--run", required=True,
+                        help="The run building it, so a later one can ask whether it still is")
+    record.add_argument("--take-over", action="store_true",
+                        help="Record even though another run holds this input: "
+                             "for when the caller has established that run is over")
     record.set_defaults(handler=command_record)
 
     publish = subcommands.add_parser("publish", help="Name the snapshot this candidate became")

@@ -64,11 +64,11 @@ if ! run promote --core-snapshot sdk-snapshot-from-before >/dev/null 2>&1; then
 fi
 check "and refusing nothing wrote nothing" 0 "$(field generation)"
 
-check "the first candidate is generation 1" 1 "$(run record --build-id sha256:aaa --version 0.20260826.1)"
+check "the first candidate is generation 1" 1 "$(run record --build-id sha256:aaa --version 0.20260826.1 --run 101)"
 check "and it is the one recorded" sha256:aaa "$(field build_id)"
 check "with nothing published yet" "" "$(field core_snapshot)"
 
-check "a second input takes the candidacy" 2 "$(run record --build-id sha256:bbb --version 0.20260826.2)"
+check "a second input takes the candidacy" 2 "$(run record --build-id sha256:bbb --version 0.20260826.2 --run 102)"
 check "and the first is no longer it" sha256:bbb "$(field build_id)"
 
 # The first build finishes late. Its snapshot is still published -- snapshots
@@ -88,12 +88,47 @@ check "the channel would still be moved by the current one" packages_building "$
 run promote --core-snapshot sdk-snapshot-bbb >/dev/null
 check "the current pair promotes" promoted "$(field status)"
 
+# One input builds once. A second run that describes the same revision is
+# refused the candidacy, which is what stops it repeating a build already
+# under way -- the case the six-hourly backstop hits when it fires during an
+# announced build of the same head.
+check "a third input takes the candidacy" 3 "$(run record --build-id sha256:ccc --version 0.20260826.3 --run 103)"
+refuses "a second run of an input already being built" \
+	record --build-id sha256:ccc --version 0.20260826.3 --run 104
+check "and the refusal left the generation alone" 3 "$(field generation)"
+check "the run building it is still the one that said so" 103 "$(field run)"
+
+# A re-run is the same run, and it has to be able to take its candidacy back:
+# refusing it would leave a failed build unrepeatable.
+check "the run that holds it may record again" 4 \
+	"$(run record --build-id sha256:ccc --version 0.20260826.3 --run 103)"
+
+# And when the holder is over -- cancelled, failed, out of time -- somebody
+# has to be able to take the input on. The state branch cannot know that a
+# run has stopped, so the caller establishes it and says so here.
+refuses "a second run while 103 still holds it" \
+	record --build-id sha256:ccc --version 0.20260826.3 --run 105
+check "taking over a dead holder records a generation" 5 \
+	"$(run record --build-id sha256:ccc --version 0.20260826.3 --run 105 --take-over)"
+check "and the new run is the one building it" 105 "$(field run)"
+
+# Only the same input is refused: a different one is a newer candidate, which
+# is the whole point of the pointer and must never be blocked.
+check "a different input is never refused" 6 \
+	"$(run record --build-id sha256:ddd --version 0.20260826.4 --run 106)"
+
+# Once it is published it is no longer being built, so the guard lets go: the
+# published-snapshot check is what stops a rebuild from there on.
+run publish --generation 6 --core-snapshot sdk-snapshot-ddd >/dev/null
+check "a published candidate does not hold the input" 7 \
+	"$(run record --build-id sha256:ddd --version 0.20260826.4 --run 107)"
+
 # Concurrent writers: a rejected push is the compare-and-swap failing, so the
 # writer re-reads and decides again. No update may be lost.
 before=$(field generation)
 pids=()
 for writer in 1 2 3 4; do
-	run record --build-id "sha256:race$writer" --version "0.20260826.1$writer" >"$work/race$writer" 2>&1 &
+	run record --build-id "sha256:race$writer" --version "0.20260826.1$writer" --run "20$writer" >"$work/race$writer" 2>&1 &
 	pids+=($!)
 done
 succeeded=0
