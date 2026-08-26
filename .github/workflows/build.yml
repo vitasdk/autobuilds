@@ -155,12 +155,40 @@ jobs:
         if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request' && steps.dedup.outputs.duplicate != 'true'
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           PROFILE: ${{ steps.ref.outputs.profile }}
+          SERIES: ${{ steps.describe.outputs.series }}
           STATE_URL: ${{ github.server_url }}/${{ github.repository }}
           BUILD_ID: ${{ steps.describe.outputs.build_id }}
         run: |
+          # A declared version is a patch of a series, and the number it may
+          # not go back past is that series' own -- not the world's last
+          # candidate, which mixes nightly and stable, and every nightly sorts
+          # below every stable. Which is why this used to stop here: the only
+          # previous version it had said nothing. The series' does, and
+          # channels.json plus the lock inside the core it points at is where
+          # it is written down.
           if [[ -f buildscripts/VERSION ]]; then
-            echo "::notice::this revision declares its own version; every nightly sorts below every stable, so the nightly guard says nothing here"
+            [[ -n $SERIES ]] || {
+              echo "::error::this revision declares a version but describe derived no series from it"
+              exit 1
+            }
+            serving=$(python3 scripts/promotions.py --after channels.json --serving "$SERIES")
+            if [[ -z $serving ]]; then
+              echo "::notice::$SERIES serves nothing yet; its first version has nothing to go back past"
+              exit 0
+            fi
+            core=${serving%% *}
+            gh release download "$core" --repo "${{ github.repository }}" \
+              --pattern lock.json --output "$RUNNER_TEMP/series-lock.json"
+            previous=$(jq -r .version "$RUNNER_TEMP/series-lock.json")
+            [[ -n $previous && $previous != null ]] || {
+              echo "::notice::$core records no version; nothing to compare"
+              exit 0
+            }
+            echo "::notice::$SERIES serves $core, version $previous"
+            ( cd buildscripts && ./buildscripts-ci describe --profile "$PROFILE" \
+                --previous-version "$previous" --output /dev/null )
             exit 0
           fi
           previous=$(python3 scripts/state.py --repository "$STATE_URL" \

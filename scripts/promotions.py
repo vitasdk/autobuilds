@@ -74,12 +74,36 @@ def promotions(before, after):
     return moved
 
 
+def serving(channels, name):
+    """The pair a series serves right now, or None when it serves nothing."""
+    if name in AUTOMATIC:
+        raise PromotionError(
+            f"{name} moves on its own; its pair lives in the signed manifest")
+    entry = channels.get(name)
+    if entry is None:
+        return None
+    return pointer_of(name, entry)
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--before", help="channels.json as it was, omitted when there was none")
     parser.add_argument("--after", required=True, help="channels.json as it is now")
     parser.add_argument("--format", choices=("json", "lines"), default="json")
+    parser.add_argument("--serving", metavar="SERIES",
+                        help="Print what this series serves now and stop; "
+                             "prints nothing when it serves nothing yet")
     args = parser.parse_args(argv)
+
+    if args.serving:
+        try:
+            pair = serving(read(args.after), args.serving)
+        except (PromotionError, json.JSONDecodeError) as error:
+            print(f"ERROR: {error}", file=sys.stderr)
+            return 1
+        if pair is not None:
+            print(f"{pair['core']} {pair['packages']} {pair['world']}")
+        return 0
 
     try:
         moved = promotions(read(args.before), read(args.after))
