@@ -105,10 +105,38 @@ jobs:
             --channel '${{ steps.params.outputs.channel }}' \
             --buildscripts-sha '${{ steps.params.outputs.buildscripts_sha }}'
 
+      # Nightly moves to the newest candidate and to nothing else. Packages
+      # for a core that was overtaken while they built still arrive, and they
+      # must not walk the channel backwards; a series has no candidate, it
+      # has a commit, so this is nightly's question alone.
+      - name: Is this still the candidate
+        id: candidate
+        if: steps.params.outputs.channel == 'nightly'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CORE: ${{ steps.params.outputs.core_release }}
+          STATE_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
+        run: |
+          profile=$(gh release download "$CORE" --repo '${{ github.repository }}' \
+            --pattern lock.json --output - | jq -r '.profile')
+          status=0
+          python3 scripts/state.py --repository "$STATE_URL" --profile "$profile" \
+            promote --core-snapshot "$CORE" || status=$?
+          case $status in
+          0) ;;
+          3)
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$CORE is no longer the candidate for $profile; nightly stays where it is"
+            ;;
+          *) exit "$status" ;;
+          esac
+
       # Carried into the manifest so the client can say something at the
       # moment somebody installs one of these. A snapshot from before this
       # existed simply has no such file.
       - name: Take the snapshot's deprecation list, if it has one
+        if: steps.candidate.outputs.stale != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -122,6 +150,7 @@ jobs:
           fi
 
       - name: Generate and sign manifest
+        if: steps.candidate.outputs.stale != 'true'
         shell: bash
         env:
           SIGNING_KEY: ${{ secrets.CHANNEL_SIGNING_KEY }}
@@ -145,6 +174,7 @@ jobs:
       # Republished with every manifest so a series that changed state says so
       # without anybody remembering to run a second thing.
       - name: Generate and sign the release index
+        if: steps.candidate.outputs.stale != 'true'
         shell: bash
         env:
           SIGNING_KEY: ${{ secrets.CHANNEL_SIGNING_KEY }}
@@ -158,6 +188,7 @@ jobs:
           rm -f "$key_file"
 
       - name: Commit and push manifest to Pages
+        if: steps.candidate.outputs.stale != 'true'
         shell: bash
         run: |
           cd vitasdk.github.io
@@ -172,6 +203,7 @@ jobs:
       # the previous manifest, conclude that nothing changed and build nothing
       # -- and the failure would look exactly like a quiet day.
       - name: Wait for the channel to be served
+        if: steps.candidate.outputs.stale != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -194,6 +226,7 @@ jobs:
       # series that moved: whether that warrants a new image is its own
       # decision, taken by comparing what it published last time.
       - name: Announce the published channel to the image builder
+        if: steps.candidate.outputs.stale != 'true'
         env:
           GH_TOKEN: ${{ secrets.REPO_DISPATCH_TOKEN }}
         shell: bash

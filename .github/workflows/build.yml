@@ -35,6 +35,9 @@ env:
 jobs:
   prepare:
     runs-on: ubuntu-24.04
+    # The candidate pointer is a commit on the state branch.
+    permissions:
+      contents: write
     outputs:
       buildscripts_ref: ${{ steps.ref.outputs.ref }}
       buildscripts_revision: ${{ steps.describe.outputs.buildscripts_revision }}
@@ -44,6 +47,7 @@ jobs:
       profile: ${{ steps.ref.outputs.profile }}
       lock: ${{ steps.describe.outputs.lock }}
       duplicate: ${{ steps.dedup.outputs.duplicate }}
+      generation: ${{ steps.candidate.outputs.generation }}
     steps:
       - id: ref
         shell: bash
@@ -131,6 +135,51 @@ jobs:
             echo "duplicate=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # describe refuses a version that does not exceed the one given, and
+      # this is the only thing that knows what that is. It runs after the
+      # deduplication and not inside describe, because an input that was
+      # already built answers with the version it answered with last time:
+      # asked before, the six-hourly backstop on an untouched master would
+      # refuse itself rather than stop at "already published".
+      - name: Check the version does not go backwards
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request' && steps.dedup.outputs.duplicate != 'true'
+        shell: bash
+        env:
+          PROFILE: ${{ steps.ref.outputs.profile }}
+          STATE_URL: ${{ github.server_url }}/${{ github.repository }}
+          BUILD_ID: ${{ steps.describe.outputs.build_id }}
+        run: |
+          if [[ -f buildscripts/VERSION ]]; then
+            echo "::notice::this revision declares its own version; every nightly sorts below every stable, so the nightly guard says nothing here"
+            exit 0
+          fi
+          previous=$(python3 scripts/state.py --repository "$STATE_URL" \
+            --profile "$PROFILE" read --field version)
+          [[ -n $previous ]] || exit 0
+          recorded=$(python3 scripts/state.py --repository "$STATE_URL" \
+            --profile "$PROFILE" read --field build_id)
+          [[ $recorded != "$BUILD_ID" ]] || exit 0
+          ( cd buildscripts && ./buildscripts-ci describe --profile "$PROFILE" \
+              --previous-version "$previous" --output /dev/null )
+
+      # Latest wins: this input becomes the candidate now, before anything is
+      # built, so a build that started earlier and finishes later can tell it
+      # was overtaken. The generation it gets back is what says so.
+      - name: Make this input the candidate
+        id: candidate
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request' && steps.dedup.outputs.duplicate != 'true'
+        shell: bash
+        env:
+          PROFILE: ${{ steps.ref.outputs.profile }}
+          STATE_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
+        run: |
+          generation=$(python3 scripts/state.py --repository "$STATE_URL" \
+            --profile "$PROFILE" record \
+            --build-id '${{ steps.describe.outputs.build_id }}' \
+            --version '${{ steps.describe.outputs.version }}')
+          echo "generation=$generation" >> "$GITHUB_OUTPUT"
+          echo "::notice::candidate generation $generation for ${{ steps.describe.outputs.build_id }}"
+
   build:
     needs: prepare
     # The deduplication key is the build input, never the run number: the
@@ -213,6 +262,27 @@ jobs:
           gh release download "$snapshot_tag" --dir downloaded-release
           diff -ru publish downloaded-release
           gh release edit "$snapshot_tag" --draft=false
+
+      # A snapshot is immutable and always worth publishing, but only the
+      # current candidate gets to be the one a channel moves to. A build that
+      # was overtaken while it ran says so here and stops being anybody's
+      # candidate, without that being a failure.
+      - name: Name the snapshot this candidate became
+        if: needs.prepare.outputs.generation != ''
+        shell: bash
+        env:
+          PROFILE: ${{ needs.prepare.outputs.profile }}
+          STATE_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
+        run: |
+          status=0
+          python3 scripts/state.py --repository "$STATE_URL" --profile "$PROFILE" \
+            publish --generation '${{ needs.prepare.outputs.generation }}' \
+            --core-snapshot '${{ steps.publish.outputs.snapshot_tag }}' || status=$?
+          case $status in
+          0) ;;
+          3) echo "::notice::a newer candidate exists; ${{ steps.publish.outputs.snapshot_tag }} is published but will not move a channel" ;;
+          *) exit "$status" ;;
+          esac
 
       # The catalogue is built by vitasdk/vitasdk-autobuild, which pins the
       # core it builds against rather than being handed one per build. All it
