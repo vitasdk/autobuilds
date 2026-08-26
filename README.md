@@ -24,10 +24,13 @@ workflow before incorporating it. Component upgrades are reviewed workflow
 changes rather than mutable dispatch inputs. Preview releases are marked as
 prereleases and cannot be promoted to stable.
 
-Channel selection is intentionally outside this build workflow. A stable or
-nightly channel manifest points to an exact immutable SDK release and an exact
-immutable `vitasdk/packages` release after the pair has passed its promotion
-gates.
+Channel selection is intentionally outside this build workflow. A channel
+manifest points to an exact immutable SDK release and an exact immutable
+packages release after the pair has passed its promotion gates: the packages
+must record the core they were built against, and the core must belong to the
+line being published. A release series is a channel, and `nightly` is the
+channel for builds that belong to no series, so neither can be pointed at the
+other's core.
 
 ## Official Docker Images
 

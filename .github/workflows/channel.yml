@@ -93,45 +93,28 @@ jobs:
           echo "sequence=$seq" >> "$GITHUB_OUTPUT"
           echo "buildscripts_sha=$b_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Verify package provenance against core release
+      - name: Verify the pair belongs to the channel
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          core='${{ steps.params.outputs.core_release }}'
-          pkgs='${{ steps.params.outputs.packages_release }}'
-          expected_b_sha='${{ steps.params.outputs.buildscripts_sha }}'
-          
-          echo "Downloading provenance.json from $PACKAGES_REPOSITORY release $pkgs..."
-          # mktemp creates the file, and the download refuses to write over one
-          # that exists, so without --clobber this step can only ever fail.
-          provenance_tmp=$(mktemp)
-          if ! gh release download "$pkgs" --repo "$PACKAGES_REPOSITORY" --pattern "provenance.json" --output "$provenance_tmp" --clobber; then
-            echo "::error::Could not download provenance.json from packages release $pkgs"
-            exit 1
-          fi
-          
-          actual_core=$(python3 -c "import json; print(json.load(open('$provenance_tmp')).get('core_snapshot', ''))")
-          if [[ "$actual_core" != "$core" ]]; then
-            echo "::error::Provenance mismatch! Packages release '$pkgs' was built against '$actual_core', but channel requested '$core'"
-            exit 1
-          fi
-          
-          if [[ -n "$expected_b_sha" ]]; then
-            actual_b_sha=$(python3 -c "import json; print(json.load(open('$provenance_tmp')).get('buildscripts_revision', ''))")
-            if [[ -n "$actual_b_sha" && "$actual_b_sha" != "$expected_b_sha" ]]; then
-              echo "::error::Provenance buildscripts mismatch! Packages has '$actual_b_sha', expected '$expected_b_sha'"
-              exit 1
-            fi
-          fi
-          
-          echo "Provenance verified: packages '$pkgs' was built against exact core '$core'"
-          rm -f "$provenance_tmp"
+          python3 scripts/verify-release-pair.py \
+            --core-release '${{ steps.params.outputs.core_release }}' \
+            --packages-release '${{ steps.params.outputs.packages_release }}' \
+            --packages-repository "$PACKAGES_REPOSITORY" \
+            --channel '${{ steps.params.outputs.channel }}' \
+            --buildscripts-sha '${{ steps.params.outputs.buildscripts_sha }}'
 
-          # Carried into the manifest so the client can say something at the
-          # moment somebody installs one of these. A snapshot from before this
-          # existed simply has no such file.
-          if gh release download "$pkgs" --repo "$PACKAGES_REPOSITORY" \
+      # Carried into the manifest so the client can say something at the
+      # moment somebody installs one of these. A snapshot from before this
+      # existed simply has no such file.
+      - name: Take the snapshot's deprecation list, if it has one
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release download '${{ steps.params.outputs.packages_release }}' \
+               --repo "$PACKAGES_REPOSITORY" \
                --pattern "deprecated.json" --output "$RUNNER_TEMP/deprecated.json"; then
             echo "deprecated=$RUNNER_TEMP/deprecated.json" >> "$GITHUB_ENV"
           else
