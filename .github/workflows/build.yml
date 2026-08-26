@@ -54,7 +54,9 @@ jobs:
       series: ${{ steps.describe.outputs.series }}
       profile: ${{ steps.ref.outputs.profile }}
       lock: ${{ steps.describe.outputs.lock }}
-      duplicate: ${{ steps.dedup.outputs.duplicate }}
+      # Two ways to have nothing to build: it is published already, or another
+      # run is building it right now.
+      duplicate: ${{ steps.dedup.outputs.duplicate == 'true' || steps.candidate.outputs.held == 'true' }}
       generation: ${{ steps.candidate.outputs.generation }}
     steps:
       - id: ref
@@ -178,15 +180,43 @@ jobs:
         if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request' && steps.dedup.outputs.duplicate != 'true'
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           PROFILE: ${{ steps.ref.outputs.profile }}
           STATE_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
+          READ_URL: ${{ github.server_url }}/${{ github.repository }}
+          BUILD_ID: ${{ steps.describe.outputs.build_id }}
+          VERSION: ${{ steps.describe.outputs.version }}
         run: |
-          generation=$(python3 scripts/state.py --repository "$STATE_URL" \
-            --profile "$PROFILE" record \
-            --build-id '${{ steps.describe.outputs.build_id }}' \
-            --version '${{ steps.describe.outputs.version }}')
+          acquire() {
+            python3 scripts/state.py --repository "$STATE_URL" --profile "$PROFILE" \
+              record --build-id "$BUILD_ID" --version "$VERSION" --run "$GITHUB_RUN_ID" "$@"
+          }
+          status=0
+          generation=$(acquire) || status=$?
+          # Refused: another run recorded this same input and has not published
+          # it. Whether that means anything depends on whether it is still
+          # running, which is the one thing the state branch cannot know.
+          if (( status == 3 )); then
+            holder=$(python3 scripts/state.py --repository "$READ_URL" \
+              --profile "$PROFILE" read --field run)
+            holder_status=$(gh api "repos/${{ github.repository }}/actions/runs/$holder" \
+              --jq .status 2>/dev/null || echo gone)
+            case $holder_status in
+            completed | gone)
+              echo "::notice::run $holder holds $BUILD_ID and is $holder_status; taking it over"
+              generation=$(acquire --take-over)
+              ;;
+            *)
+              echo "::notice::$BUILD_ID is already being built by run $holder; nothing to build"
+              echo "held=true" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+            esac
+          elif (( status != 0 )); then
+            exit "$status"
+          fi
           echo "generation=$generation" >> "$GITHUB_OUTPUT"
-          echo "::notice::candidate generation $generation for ${{ steps.describe.outputs.build_id }}"
+          echo "::notice::candidate generation $generation for $BUILD_ID"
 
   build:
     needs: prepare
