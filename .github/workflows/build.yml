@@ -225,9 +225,17 @@ jobs:
     if: needs.prepare.outputs.duplicate != 'true'
     # The queue this run does belong in, now that describe has named the
     # input: two runs of one build_id serialize, two different ones never
-    # meet.
+    # meet. Not a pull request, though -- its build_id is whatever
+    # buildscripts master holds, so every pull request would join the queue
+    # of the master builds of that revision, and a job held in an occupied
+    # group is cancelled rather than delayed. One of them evicted the cron
+    # backstop this afternoon, after that run had already recorded itself as
+    # the candidate, which left the channel with a candidate no run was
+    # producing. A pull request gets a group of its own; there is nothing for
+    # it to serialize with, since the workflow-level group already keeps one
+    # run alive per branch.
     concurrency:
-      group: autobuilds-build-${{ needs.prepare.outputs.build_id }}
+      group: autobuilds-build-${{ github.event_name == 'pull_request' && github.run_id || needs.prepare.outputs.build_id }}
       cancel-in-progress: false
     uses: vitasdk/buildscripts/.github/workflows/build-sdk.yml@master
     with:
