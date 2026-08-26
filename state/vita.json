@@ -1,12 +1,12 @@
 {
   "candidate": {
-    "build_id": "sha256:b2853276a24394df8ad65b2b2c980a3dcb61e07a7dc0114a9a55714bfb6c74b5",
-    "core_snapshot": "sdk-snapshot-20260826.634.1",
-    "run": "32990688901",
-    "status": "packages_building",
-    "version": "0.20260826.302"
+    "build_id": "sha256:28a81006eac48d0551cb43c18103f48dfa276bf688241c4cb670c866415b5575",
+    "core_snapshot": null,
+    "run": "32995947592",
+    "status": "building",
+    "version": "0.20260826.303"
   },
-  "generation": 6,
+  "generation": 7,
   "profile": "vita",
   "schema": 1
 }
