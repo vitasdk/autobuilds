@@ -98,29 +98,50 @@ refuses "a second run of an input already being built" \
 check "and the refusal left the generation alone" 3 "$(field generation)"
 check "the run building it is still the one that said so" 103 "$(field run)"
 
+# A candidate recorded before any of this existed names no run, and nobody can
+# ask whether a run that was never written down is still going. It holds
+# nothing: the alternative is a document that no build may ever take on.
+python3 - "$remote" <<'PYEOF'
+import json, subprocess, sys, tempfile
+remote = sys.argv[1]
+root = tempfile.mkdtemp()
+subprocess.run(["git", "clone", "--quiet", "--branch", "state", remote, root], check=True)
+path = f"{root}/state/vita.json"
+document = json.load(open(path))
+del document["candidate"]["run"]
+json.dump(document, open(path, "w"), indent=2, sort_keys=True)
+for command in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t",
+                                "commit", "--quiet", "-m", "older document"],
+                ["push", "--quiet", "origin", "HEAD:state"]):
+    subprocess.run(["git", *command], cwd=root, check=True)
+PYEOF
+check "a candidate with no run recorded does not hold the input" 4 \
+	"$(run record --build-id sha256:ccc --version 0.20260826.3 --run 104)"
+check "and the run that took it is written down" 104 "$(field run)"
+
 # A re-run is the same run, and it has to be able to take its candidacy back:
 # refusing it would leave a failed build unrepeatable.
-check "the run that holds it may record again" 4 \
-	"$(run record --build-id sha256:ccc --version 0.20260826.3 --run 103)"
+check "the run that holds it may record again" 5 \
+	"$(run record --build-id sha256:ccc --version 0.20260826.3 --run 104)"
 
 # And when the holder is over -- cancelled, failed, out of time -- somebody
 # has to be able to take the input on. The state branch cannot know that a
 # run has stopped, so the caller establishes it and says so here.
-refuses "a second run while 103 still holds it" \
+refuses "a second run while 104 still holds it" \
 	record --build-id sha256:ccc --version 0.20260826.3 --run 105
-check "taking over a dead holder records a generation" 5 \
+check "taking over a dead holder records a generation" 6 \
 	"$(run record --build-id sha256:ccc --version 0.20260826.3 --run 105 --take-over)"
 check "and the new run is the one building it" 105 "$(field run)"
 
 # Only the same input is refused: a different one is a newer candidate, which
 # is the whole point of the pointer and must never be blocked.
-check "a different input is never refused" 6 \
+check "a different input is never refused" 7 \
 	"$(run record --build-id sha256:ddd --version 0.20260826.4 --run 106)"
 
 # Once it is published it is no longer being built, so the guard lets go: the
 # published-snapshot check is what stops a rebuild from there on.
-run publish --generation 6 --core-snapshot sdk-snapshot-ddd >/dev/null
-check "a published candidate does not hold the input" 7 \
+run publish --generation 7 --core-snapshot sdk-snapshot-ddd >/dev/null
+check "a published candidate does not hold the input" 8 \
 	"$(run record --build-id sha256:ddd --version 0.20260826.4 --run 107)"
 
 # Concurrent writers: a rejected push is the compare-and-swap failing, so the
