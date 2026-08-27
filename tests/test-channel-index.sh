@@ -44,6 +44,15 @@ refuses "a missing status" '{"2026.09":{"summary":"no status"}}'
 refuses "a name that escapes a path" '{"../evil":{"status":"supported"}}'
 refuses "an empty index" '{}'
 
+accepts "a softfp world" '{"2026.11-softfp":{"status":"development","world":"vita-softfp"}}'
+refuses "an invented world" '{"2026.09":{"status":"supported","world":"vita-clang"}}'
+
+generate '{"2026.09":{"status":"supported"}}'
+if ! grep -q '"world":"vita"' "$work/out/index.json"; then
+	echo "a channel with no world defaults to vita" >&2
+	failures=$((failures + 1))
+fi
+
 # The client parses only the canonical form, so key order is not cosmetic.
 generate '{"nightly":{"status":"development"},"2026.09":{"status":"supported"}}'
 if ! grep -q '{"channels":{"2026.09"' "$work/out/index.json"; then
