@@ -27,6 +27,23 @@ provenance()
 		"$1" "${2:-}" > "$work/provenance.json"
 }
 
+# A snapshot holding more than one world records the core each of them was
+# built against, and repeats the first one in the singular field.
+provenance_worlds()
+{
+	printf '{"schema_version":2,"core_snapshot":"%s","buildscripts_revision":"",' \
+		"$1" > "$work/provenance.json"
+	printf '"worlds":[{"arch":"vita","core":"%s"},{"arch":"vita-softfp","core":"%s"}]}\n' \
+		"$1" "$2" >> "$work/provenance.json"
+}
+
+# A lock that also says which world the core was built as.
+lock_profile()
+{
+	printf '{"schema":1,"version":"%s","series":%s,"buildscripts_revision":"45c0a932f","profile":"%s"}\n' \
+		"$1" "$2" "$3" > "$work/lock.json"
+}
+
 verify()
 {
 	python3 "$verifier" \
@@ -95,6 +112,41 @@ refuses "a channel no core declares" "not to" stable
 lock 2026.08.1 '"2026.08"'
 provenance sdk-snapshot-9.9.9
 refuses "packages built against another core" "sdk-snapshot-9.9.9" 2026.08
+
+# A snapshot serves one repository per world, each built against its own
+# core, so which core the packages must match depends on the world the
+# channel serves. Comparing the singular field would hold every world to the
+# first one's core.
+core=sdk-core-2.2.2-softfp
+lock_profile 2026.08.1 '"2026.08"' vita-softfp
+provenance_worlds sdk-snapshot-1.1.1 sdk-core-2.2.2-softfp
+accepts "a softfp channel matched against the softfp core" 2026.08 --world vita-softfp
+
+core=sdk-snapshot-1.1.1
+lock_profile 2026.08.1 '"2026.08"' vita
+provenance_worlds sdk-snapshot-1.1.1 sdk-core-2.2.2-softfp
+accepts "the default channel matched against its own core" 2026.08 --world vita
+
+core=sdk-snapshot-1.1.1
+lock_profile 2026.08.1 '"2026.08"' vita-softfp
+provenance_worlds sdk-snapshot-1.1.1 sdk-core-2.2.2-softfp
+refuses "a softfp channel offered the default world's core" "sdk-core-2.2.2-softfp" \
+	2026.08 --world vita-softfp
+
+# Asking for a world the packages do not carry is the mistake this replaces:
+# before, it silently compared against whichever core came first.
+core=sdk-snapshot-1.1.1
+lock_profile 2026.08.1 '"2026.08"' vita-scelibc
+provenance_worlds sdk-snapshot-1.1.1 sdk-core-2.2.2-softfp
+refuses "a world the snapshot does not carry" "carries no" 2026.08 --world vita-scelibc
+
+# A snapshot from before worlds were recorded still answers, through the
+# field it does have.
+core=sdk-snapshot-1.1.1
+lock_profile 2026.08.1 '"2026.08"' vita
+provenance sdk-snapshot-1.1.1
+accepts "a snapshot that predates worlds" 2026.08 --world vita
+unset core
 
 # Both halves record a buildscripts revision only sometimes; disagreeing is a
 # mismatched pair, silence is today's normal.

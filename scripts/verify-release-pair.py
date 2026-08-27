@@ -64,8 +64,27 @@ def check_series(lock, channel, core_release):
             f"{channel!r}.")
 
 
-def check_provenance(provenance, core_release, packages_release):
+def check_provenance(provenance, core_release, packages_release, world=""):
+    """The packages were built against the core this channel would serve.
+
+    A snapshot holds one repository per world and each was built against its
+    own core, so which core to compare depends on the world being served.
+    The singular field is what a snapshot written before worlds existed
+    carries, and it names the first world's core in the ones that came after.
+    """
+
     built_against = provenance.get("core_snapshot", "")
+    worlds = provenance.get("worlds")
+    if world and worlds is not None:
+        for entry in worlds:
+            if entry.get("arch") == world:
+                built_against = entry.get("core", "")
+                break
+        else:
+            served = ", ".join(e.get("arch", "?") for e in worlds) or "none"
+            raise SystemExit(
+                f"ERROR: packages release {packages_release!r} carries no {world!r} "
+                f"world; it carries: {served}.")
     if built_against != core_release:
         raise SystemExit(
             f"ERROR: packages release {packages_release!r} was built against "
@@ -131,7 +150,7 @@ def main():
     provenance = read_release_file(args.packages_repository, args.packages_release,
                                    "provenance.json", args.packages_provenance)
 
-    check_provenance(provenance, args.core_release, args.packages_release)
+    check_provenance(provenance, args.core_release, args.packages_release, args.world)
     check_series(lock, args.channel, args.core_release)
     check_world(lock, args.world, args.core_release)
     check_buildscripts_revision(lock, provenance, args.buildscripts_sha)
