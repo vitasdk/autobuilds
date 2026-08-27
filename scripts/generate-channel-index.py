@@ -26,6 +26,11 @@ CHANNEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # did; the point of saying so is that nobody discovers it by accident.
 STATUSES = ("development", "supported", "deprecated", "end-of-life")
 
+# A world is enumerated by hand, never derived from a naming convention (see
+# PLAN-softfp.md). A channel that does not say its world is the default one:
+# every entry that existed before worlds did stays valid unedited.
+WORLDS = ("vita", "vita-softfp")
+
 
 def canonical(document):
     """The exact serialization the client accepts: sorted keys, no spaces."""
@@ -43,7 +48,16 @@ def build_index(source):
             raise SystemExit(
                 f"ERROR: {name}: status must be one of {', '.join(STATUSES)}, "
                 f"not {status!r}")
-        channels[name] = {"status": status, "summary": entry.get("summary", "")}
+        world = entry.get("world", "vita")
+        if world not in WORLDS:
+            raise SystemExit(
+                f"ERROR: {name}: world must be one of {', '.join(WORLDS)}, "
+                f"not {world!r}")
+        channels[name] = {
+            "status": status,
+            "summary": entry.get("summary", ""),
+            "world": world,
+        }
     if not channels:
         raise SystemExit("ERROR: the index would list no series at all")
     return {"schema_version": 1, "channels": channels}
