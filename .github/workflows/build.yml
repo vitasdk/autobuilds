@@ -290,12 +290,24 @@ jobs:
           # The lock names every source revision that went in; without it a
           # snapshot records what it contains but not what produced it.
           LOCK_JSON: ${{ needs.prepare.outputs.lock }}
+          PROFILE: ${{ needs.prepare.outputs.profile }}
         shell: bash
         run: |
           mkdir publish
           cp repository/* publish/
           printf '%s\n' "$LOCK_JSON" > publish/lock.json
-          snapshot_tag="sdk-snapshot-$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          # A release tag is what everything downstream names a core by, so it
+          # has to say which world the core is of: two of them differ in the
+          # ABI of everything they compile, and telling them apart by opening
+          # the notes is not telling them apart. The profile goes in as it is
+          # written rather than shortened, because a world is enumerated by
+          # hand everywhere else here and a shortening is a rule to get wrong.
+          # The default world keeps the name it has always published under.
+          tag_prefix=sdk-snapshot-
+          if [[ $PROFILE != "$DEFAULT_PROFILE" ]]; then
+            tag_prefix="sdk-$PROFILE-snapshot-"
+          fi
+          snapshot_tag="${tag_prefix}$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           echo "snapshot_tag=$snapshot_tag" >> "$GITHUB_OUTPUT"
           # The build_id line is what the next run reads to know this input
           # is already published; keep it a line of its own.
