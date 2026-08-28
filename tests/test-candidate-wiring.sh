@@ -74,6 +74,22 @@ if None not in (dedup, guard, made):
     if made < guard:
         print("the candidate is recorded before its version is checked")
 
+# A patch is the one release whose version a person types, and it was the one
+# the guard did not cover: it stopped at a declared version, because the only
+# previous version it had was the world's last candidate, and every nightly
+# sorts below every stable. The series' own version is the comparison that
+# means something, and it is readable from channels.json.
+if guard is not None:
+    script = str(prepare[guard].get("run", ""))
+    if "--serving" not in script:
+        print("the version guard does not read what the series serves, so a patch's version is compared against nothing")
+    # Once for the declared version, once for the derived one: a guard that
+    # compares only one of them is the guard that was already there.
+    if script.count("--previous-version") < 2:
+        print("only one of the two kinds of version is compared against a previous one")
+    if str(prepare[guard].get("env", {})).find("outputs.series") < 0:
+        print("the version guard is not told which series this revision declares")
+
 # Being refused the candidacy is a decision, not a failure. One input builds
 # once: the second run of it is told so by the state branch, and has to turn
 # that into "nothing to build" rather than into a red run -- or into a build

@@ -103,6 +103,52 @@ sys.exit('2026.08 serves no pair: missing ' + ', '.join(missing) if missing else
 	failures=$((failures + 1))
 fi
 
+# What a series serves right now, which is the number a patch of it may not
+# go back past. Nothing read this before, so a version typed into VERSION by
+# hand was compared against nothing at all.
+serving()
+{
+	python3 "$promotions" --after "$work/serving.json" --serving "$1" 2>&1
+}
+
+serves()
+{
+	local description=$1 series=$2 expected=$3 actual
+	actual=$(serving "$series") || {
+		printf 'FAIL: %s: refused\n  %s\n' "$description" "$actual" >&2
+		failures=$((failures + 1))
+		return
+	}
+	if [[ $actual != "$expected" ]]; then
+		printf 'FAIL: %s\n  expected: %s\n  actual:   %s\n' \
+			"$description" "$expected" "$actual" >&2
+		failures=$((failures + 1))
+	fi
+}
+
+cat > "$work/serving.json" <<'JSON'
+{
+  "2026.08": {"core": "core-1", "packages": "pkgs-1", "world": "vita"},
+  "2026.09": {"status": "development"},
+  "nightly": {"status": "development"}
+}
+JSON
+
+serves "a series that serves a pair names it" 2026.08 "core-1 pkgs-1 vita"
+serves "a series that has published nothing yet says nothing" 2026.09 ""
+serves "a series nobody declared says nothing" 2026.10 ""
+
+# nightly has no pointer here, and asking as if it did has to be refused
+# rather than answered with silence: silence reads as "no previous version",
+# which waves anything through.
+if output=$(serving nightly); then
+	printf 'FAIL: nightly was answered as if it served a pair\n' >&2
+	failures=$((failures + 1))
+elif [[ $output != *"moves on its own"* ]]; then
+	printf 'FAIL: nightly was refused for the wrong reason: %s\n' "$output" >&2
+	failures=$((failures + 1))
+fi
+
 # And the commit has to reach the thing that publishes it.
 while IFS= read -r problem; do
 	printf 'FAIL: %s\n' "$problem" >&2
