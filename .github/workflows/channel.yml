@@ -212,6 +212,7 @@ jobs:
             --core-release '${{ matrix.entry.core }}' \
             --packages-release '${{ matrix.entry.packages }}' \
             --channel '${{ matrix.entry.name }}' \
+            --world '${{ matrix.entry.world }}' \
             --sequence '${{ needs.promotions.outputs.sequence }}' \
             --packages-repository "$PACKAGES_REPOSITORY" \
             ${deprecated:+--deprecated "$deprecated"} \
