@@ -9,5 +9,10 @@
   "nightly": {
     "status": "development",
     "summary": "Rebuilt continuously. Expect it to move under you."
+  },
+  "nightly-softfp": {
+    "status": "development",
+    "summary": "Soft-float ABI, for ports that link Android .so files. Moves like nightly.",
+    "world": "vita_softfp"
   }
 }

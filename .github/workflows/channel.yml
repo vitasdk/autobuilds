@@ -19,6 +19,15 @@ on:
         required: false
         default: nightly
         type: string
+      world:
+        # Not a list, for the same reason the channel is not: adding a world
+        # is a commit in the repository that builds them, and this file must
+        # not have to be edited to publish one. The manifest generator checks
+        # the name against the worlds it knows.
+        description: Toolchain world the snapshot was built for
+        required: false
+        default: vita
+        type: string
       sequence:
         description: Monotonic sequence number (leave empty for auto)
         required: false
@@ -65,6 +74,7 @@ jobs:
           CORE: ${{ inputs.core_release || github.event.client_payload.core_snapshot }}
           PACKAGES: ${{ inputs.packages_release || github.event.client_payload.packages_snapshot }}
           CHANNEL: ${{ inputs.channel || github.event.client_payload.channel }}
+          WORLD: ${{ inputs.world || github.event.client_payload.world }}
           SEQUENCE: ${{ inputs.sequence }}
           BUILDSCRIPTS_SHA: ${{ inputs.buildscripts_sha || github.event.client_payload.buildscripts_sha }}
           BEFORE: ${{ github.event.before }}
@@ -81,9 +91,17 @@ jobs:
               echo "::error::core_release, packages_release and channel must all be explicitly provided (no default fallback allowed)"
               exit 1
             fi
+            # The world is what decides which database the manifest names and
+            # which core it installs, so it is carried rather than defaulted:
+            # a dispatch that forgot it would publish a channel serving one
+            # world's packages against another world's toolchain.
+            if [[ -z $WORLD ]]; then
+              echo "::error::world must be provided; it decides the database and the core"
+              exit 1
+            fi
             entries=$(jq -nc --arg name "$CHANNEL" --arg core "$CORE" \
-              --arg packages "$PACKAGES" \
-              '[{name: $name, core: $core, packages: $packages, world: ""}]')
+              --arg packages "$PACKAGES" --arg world "$WORLD" \
+              '[{name: $name, core: $core, packages: $packages, world: $world}]')
           fi
           echo "entries=$entries" >> "$GITHUB_OUTPUT"
           echo "buildscripts_sha=$BUILDSCRIPTS_SHA" >> "$GITHUB_OUTPUT"

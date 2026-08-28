@@ -85,6 +85,14 @@ refuses "packages with no core" "not core"
 series ',"core":"core-1","packages":"pkgs-1","world":"vita"' ',"core":"core-1","packages":"pkgs-1","world":"vita"' > "$work/after.json"
 refuses "nightly carrying a pair" "moves on its own"
 
+# A world is what a channel is, not what it serves: an automatic channel says
+# which one it is without pinning anything, the same way it says its status.
+series ',"core":"core-1","packages":"pkgs-1","world":"vita"' ',"world":"vita_softfp"' > "$work/after.json"
+check "an automatic channel naming only its world" "2026.08 core-1 pkgs-1 vita"
+
+series ',"core":"core-1","packages":"pkgs-1","world":"vita"' ',"core":"c","packages":"p","world":"vita_softfp"' > "$work/after.json"
+refuses "an automatic channel carrying a pair beside its world" "moves on its own"
+
 # Emptying a pointer leaves the served manifest pointing where nobody looks.
 series ',"core":"core-1","packages":"pkgs-1","world":"vita"' > "$work/before.json"
 series '' > "$work/after.json"
