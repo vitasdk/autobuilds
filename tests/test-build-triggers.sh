@@ -57,11 +57,11 @@ check "an unasked build takes the development branch" \
 check "an unasked build takes the policy default world" \
 	[ "$(output_value profile)" = "$default_profile" ]
 
-run_ref_step "8c1e5f9d2b" "vita-softfp"
+run_ref_step "8c1e5f9d2b" "vita_softfp"
 check "a trigger that names a revision is obeyed" \
 	[ "$(output_value ref)" = "8c1e5f9d2b" ]
 check "a trigger that names a world is obeyed" \
-	[ "$(output_value profile)" = "vita-softfp" ]
+	[ "$(output_value profile)" = "vita_softfp" ]
 
 # An output of this step decides whether the build runs at all, so a
 # payload that carries a newline must not get to write a second one.

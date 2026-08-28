@@ -51,17 +51,17 @@ if ! grep -q '"name":"vita.db"' "$work/out-vita/nightly.json"; then
 	failures=$((failures + 1))
 fi
 
-generate vita-softfp vita-softfp.db
-if ! grep -q '"schema_version":2' "$work/out-vita-softfp/nightly.json"; then
+generate vita_softfp vita_softfp.db
+if ! grep -q '"schema_version":2' "$work/out-vita_softfp/nightly.json"; then
 	echo "softfp world: expected schema_version 2, so an older client fails closed" >&2
 	failures=$((failures + 1))
 fi
-if ! grep -q '"world":"vita-softfp"' "$work/out-vita-softfp/nightly.json"; then
+if ! grep -q '"world":"vita_softfp"' "$work/out-vita_softfp/nightly.json"; then
 	echo "softfp world: manifest does not declare its world" >&2
 	failures=$((failures + 1))
 fi
-if ! grep -q '"name":"vita-softfp.db"' "$work/out-vita-softfp/nightly.json"; then
-	echo "softfp world: packages database should be vita-softfp.db, not vita.db" >&2
+if ! grep -q '"name":"vita_softfp.db"' "$work/out-vita_softfp/nightly.json"; then
+	echo "softfp world: packages database should be vita_softfp.db, not vita.db" >&2
 	failures=$((failures + 1))
 fi
 
