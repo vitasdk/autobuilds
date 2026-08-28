@@ -97,10 +97,18 @@ def main(argv):
     parser.add_argument("--before", help="channels.json as it was, omitted when there was none")
     parser.add_argument("--after", required=True, help="channels.json as it is now")
     parser.add_argument("--format", choices=("json", "lines"), default="json")
+    parser.add_argument("--automatic", metavar="SERIES",
+                        help="Print whether this series moves on its own and "
+                             "stop; the answer decides whether a publish has "
+                             "to check it is still the newest candidate")
     parser.add_argument("--serving", metavar="SERIES",
                         help="Print what this series serves now and stop; "
                              "prints nothing when it serves nothing yet")
     args = parser.parse_args(argv)
+
+    if args.automatic:
+        print("true" if args.automatic in AUTOMATIC else "false")
+        return 0
 
     if args.serving:
         try:

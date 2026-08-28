@@ -82,8 +82,11 @@ jobs:
           if [[ '${{ github.event_name }}' == push ]]; then
             git show "$BEFORE:channels.json" > "$RUNNER_TEMP/before.json" 2>/dev/null ||
               : > "$RUNNER_TEMP/before.json"
+            # A series that moves by commit is never automatic: its pair is
+            # written down, which is what promotions reports on.
             entries=$(python3 scripts/promotions.py \
-              --before "$RUNNER_TEMP/before.json" --after channels.json)
+              --before "$RUNNER_TEMP/before.json" --after channels.json |
+              jq -c 'map(. + {automatic: false})')
           else
             # A dispatch says everything itself: nightly's pair is not in the
             # file, and neither is a promotion somebody is replaying by hand.
@@ -99,9 +102,15 @@ jobs:
               echo "::error::world must be provided; it decides the database and the core"
               exit 1
             fi
+            # Whether this one moves on its own is not guessed from its
+            # name: the file that decides it is asked.
+            automatic=$(python3 scripts/promotions.py --after channels.json \
+              --automatic "$CHANNEL")
             entries=$(jq -nc --arg name "$CHANNEL" --arg core "$CORE" \
               --arg packages "$PACKAGES" --arg world "$WORLD" \
-              '[{name: $name, core: $core, packages: $packages, world: $world}]')
+              --argjson automatic "$automatic" \
+              '[{name: $name, core: $core, packages: $packages, world: $world,
+                 automatic: $automatic}]')
           fi
           echo "entries=$entries" >> "$GITHUB_OUTPUT"
           echo "buildscripts_sha=$BUILDSCRIPTS_SHA" >> "$GITHUB_OUTPUT"
@@ -154,13 +163,14 @@ jobs:
             --world '${{ matrix.entry.world }}' \
             --buildscripts-sha '${{ needs.promotions.outputs.buildscripts_sha }}'
 
-      # Nightly moves to the newest candidate and to nothing else. Packages
-      # for a core that was overtaken while they built still arrive, and they
-      # must not walk the channel backwards; a series has no candidate, it
-      # has a commit, so this is nightly's question alone.
+      # A channel that moves on its own moves to the newest candidate and to
+      # nothing else. Packages for a core that was overtaken while they built
+      # still arrive, and they must not walk the channel backwards; a series
+      # has no candidate, it has a commit, so this is a question only the
+      # automatic channels have -- every one of them, not just the first.
       - name: Is this still the candidate
         id: candidate
-        if: matrix.entry.name == 'nightly'
+        if: matrix.entry.automatic
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

@@ -98,6 +98,30 @@ series ',"core":"core-1","packages":"pkgs-1","world":"vita"' > "$work/before.jso
 series '' > "$work/after.json"
 refuses "a pair taken away" "keeps its pair"
 
+# A channel with no pair in the file moves on its own, and the publisher asks
+# this to decide whether to check it is still the newest candidate. The two
+# have to agree, or a channel gets published without that check.
+for name in $(python3 -c "
+import json
+for name, entry in json.load(open('$directory/channels.json')).items():
+    print(name)
+"); do
+	pinned=$(python3 -c "
+import json
+entry = json.load(open('$directory/channels.json'))['$name']
+print('yes' if entry.get('core') or entry.get('packages') else 'no')
+")
+	answer=$(python3 "$promotions" --after "$directory/channels.json" --automatic "$name")
+	case "$pinned:$answer" in
+		yes:false|no:true) ;;
+		*)
+			printf 'FAIL: %s is pinned=%s but reported automatic=%s\n' \
+				"$name" "$pinned" "$answer" >&2
+			failures=$((failures + 1))
+			;;
+	esac
+done
+
 # And the file in this repository has to be one of the valid ones.
 cp "$directory/channels.json" "$work/after.json"
 cp "$directory/channels.json" "$work/before.json"

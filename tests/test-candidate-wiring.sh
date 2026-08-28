@@ -32,13 +32,41 @@ if guard is None:
     print("update-channel has no step with id 'candidate'")
     sys.exit()
 
-# The guard itself is nightly's question: a series has a commit, not a candidate.
-if "nightly" not in str(steps[guard].get("if", "")):
-    print("the candidate check no longer limits itself to nightly")
+# The guard is a question only the channels that move on their own have: a
+# series has a commit, not a candidate. Asked by the flag the entry carries
+# rather than by name, so a second automatic channel is covered by existing.
+condition = str(steps[guard].get("if", ""))
+if "matrix.entry.automatic" not in condition:
+    print("the candidate check no longer limits itself to automatic channels")
+if "nightly" in condition:
+    print("the candidate check singles out a channel by name again")
 
 for step, name in zip(steps[guard + 1:], names[guard + 1:]):
     if "steps.candidate.outputs.stale" not in str(step.get("if", "")):
         print(f"step {name!r} runs even when the candidate check rejected the pair")
+
+# Both ways an entry is built have to say whether it is automatic. Absent,
+# the flag reads as false and the guard silently stops running -- for the
+# dispatch path, which is the only way an automatic channel is ever published.
+resolve = next(
+    (step
+     for job in channel["jobs"].values()
+     for step in job.get("steps", [])
+     if step.get("id") == "resolve"),
+    None)
+if resolve is None:
+    print("channel.yml no longer resolves its entries in a step called 'resolve'")
+else:
+    script = str(resolve.get("run", ""))
+    if "automatic: false" not in script:
+        print("the committed-pair path does not say its entries are not automatic")
+    if "--automatic" not in script:
+        print("the dispatch path does not ask whether the channel is automatic")
+    # Both halves: the answer has to be given to jq and used by it.
+    if "--argjson automatic" not in script:
+        print("the dispatched entry is built without being given the answer")
+    if "automatic: $automatic" not in script:
+        print("the dispatched entry does not carry the answer it asked for")
 
 build = yaml.safe_load(open(f"{directory}/.github/workflows/build.yml"))
 prepare = build["jobs"]["prepare"]["steps"]
