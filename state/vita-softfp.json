@@ -1,12 +1,12 @@
 {
   "candidate": {
-    "build_id": "sha256:68f2a0e31fab46925c639da68b2440e6de39f798db5f75e94ca2ff5b84824505",
+    "build_id": "sha256:40e45321eb3583830e7153d47746764700ee53c00bfe569d920ded71b179d4bf",
     "core_snapshot": null,
-    "run": "33121359659",
+    "run": "33129362621",
     "status": "building",
-    "version": "0.20260827.309"
+    "version": "0.20260828.311"
   },
-  "generation": 3,
+  "generation": 4,
   "profile": "vita-softfp",
   "schema": 1
 }
