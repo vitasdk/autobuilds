@@ -98,7 +98,7 @@ def read_deprecated(path):
 
 # A world is enumerated by hand, never derived from a naming convention: see
 # PLAN-softfp.md. Extend this when a second variant world actually ships.
-WORLDS = ("vita", "vita-softfp")
+WORLDS = ("vita", "vita_softfp")
 
 
 def build_manifest(

@@ -38,7 +38,7 @@ expect "the default world keeps the name it has always published under" \
 	"sdk-snapshot-20260827.1.1" "$(tag_for vita vita)"
 
 expect "another world is named in its own tag" \
-	"sdk-vita-softfp-snapshot-20260827.1.1" "$(tag_for vita-softfp vita)"
+	"sdk-vita_softfp-snapshot-20260827.1.1" "$(tag_for vita_softfp vita)"
 
 # The profile goes in as it is written. A world is enumerated by hand
 # everywhere else here, and a shortening would be a rule to get wrong.

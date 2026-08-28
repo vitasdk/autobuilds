@@ -44,7 +44,7 @@ refuses "a missing status" '{"2026.09":{"summary":"no status"}}'
 refuses "a name that escapes a path" '{"../evil":{"status":"supported"}}'
 refuses "an empty index" '{}'
 
-accepts "a softfp world" '{"2026.11-softfp":{"status":"development","world":"vita-softfp"}}'
+accepts "a softfp world" '{"2026.11-softfp":{"status":"development","world":"vita_softfp"}}'
 refuses "an invented world" '{"2026.09":{"status":"supported","world":"vita-clang"}}'
 
 generate '{"2026.09":{"status":"supported"}}'

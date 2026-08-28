@@ -29,7 +29,7 @@ STATUSES = ("development", "supported", "deprecated", "end-of-life")
 # A world is enumerated by hand, never derived from a naming convention (see
 # PLAN-softfp.md). A channel that does not say its world is the default one:
 # every entry that existed before worlds did stays valid unedited.
-WORLDS = ("vita", "vita-softfp")
+WORLDS = ("vita", "vita_softfp")
 
 
 def canonical(document):

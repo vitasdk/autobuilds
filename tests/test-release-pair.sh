@@ -33,7 +33,7 @@ provenance_worlds()
 {
 	printf '{"schema_version":2,"core_snapshot":"%s","buildscripts_revision":"",' \
 		"$1" > "$work/provenance.json"
-	printf '"worlds":[{"arch":"vita","core":"%s"},{"arch":"vita-softfp","core":"%s"}]}\n' \
+	printf '"worlds":[{"arch":"vita","core":"%s"},{"arch":"vita_softfp","core":"%s"}]}\n' \
 		"$1" "$2" >> "$work/provenance.json"
 }
 
@@ -118,9 +118,9 @@ refuses "packages built against another core" "sdk-snapshot-9.9.9" 2026.08
 # channel serves. Comparing the singular field would hold every world to the
 # first one's core.
 core=sdk-core-2.2.2-softfp
-lock_profile 2026.08.1 '"2026.08"' vita-softfp
+lock_profile 2026.08.1 '"2026.08"' vita_softfp
 provenance_worlds sdk-snapshot-1.1.1 sdk-core-2.2.2-softfp
-accepts "a softfp channel matched against the softfp core" 2026.08 --world vita-softfp
+accepts "a softfp channel matched against the softfp core" 2026.08 --world vita_softfp
 
 core=sdk-snapshot-1.1.1
 lock_profile 2026.08.1 '"2026.08"' vita
@@ -128,10 +128,10 @@ provenance_worlds sdk-snapshot-1.1.1 sdk-core-2.2.2-softfp
 accepts "the default channel matched against its own core" 2026.08 --world vita
 
 core=sdk-snapshot-1.1.1
-lock_profile 2026.08.1 '"2026.08"' vita-softfp
+lock_profile 2026.08.1 '"2026.08"' vita_softfp
 provenance_worlds sdk-snapshot-1.1.1 sdk-core-2.2.2-softfp
 refuses "a softfp channel offered the default world's core" "sdk-core-2.2.2-softfp" \
-	2026.08 --world vita-softfp
+	2026.08 --world vita_softfp
 
 # Asking for a world the packages do not carry is the mistake this replaces:
 # before, it silently compared against whichever core came first.
