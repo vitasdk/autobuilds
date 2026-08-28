@@ -3,7 +3,7 @@
     "build_id": "sha256:ff3109c6827da26525fc4744f435a37f9e379d8dab7c4d88aebefecc2a6c993a",
     "core_snapshot": "sdk-snapshot-20260828.657.1",
     "run": "33159806904",
-    "status": "packages_building",
+    "status": "promoted",
     "version": "0.20260828.312"
   },
   "generation": 16,
