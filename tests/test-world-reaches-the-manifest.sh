@@ -26,27 +26,42 @@ while IFS= read -r problem; do
 done < <(python3 - "$directory" <<'PYEOF'
 import sys, yaml
 
+import glob, os
+
 directory = sys.argv[1]
 channel = yaml.safe_load(open(f"{directory}/.github/workflows/channel.yml"))
 
-# Every script the publishing job runs that takes a --world must be given one.
+# Every script that takes a --world must be given one, wherever it is run
+# from. Reading only the workflow that publishes would say nothing about the
+# next one somebody adds.
 wants_world = ("generate-channel-manifest.py", "verify-release-pair.py")
 seen = set()
-for job in channel["jobs"].values():
-    for step in job.get("steps", []):
-        run = str(step.get("run", ""))
-        for script in wants_world:
-            if script not in run:
-                continue
-            seen.add(script)
-            if "--world" not in run:
-                print(f"{script} is run without --world")
-            elif "matrix.entry.world" not in run:
-                print(f"{script} is given a world that is not the entry's")
+for path in sorted(glob.glob(f"{directory}/.github/workflows/*.yml")):
+    workflow = yaml.safe_load(open(path))
+    where = os.path.basename(path)
+    for job in (workflow.get("jobs") or {}).values():
+        for step in job.get("steps", []):
+            run = str(step.get("run", ""))
+            for script in wants_world:
+                if script not in run:
+                    continue
+                seen.add(script)
+                if "--world" not in run:
+                    print(f"{where} runs {script} without --world")
+                elif "--world ''" in run or '--world ""' in run:
+                    print(f"{where} runs {script} with an empty world")
 
 for script in wants_world:
     if script not in seen:
-        print(f"{script} is no longer run here; this test needs updating")
+        print(f"{script} is no longer run anywhere; this test needs updating")
+
+# And in the publishing job specifically, the world has to be the entry's own
+# rather than any value that happens to be in scope.
+for job in channel["jobs"].values():
+    for step in job.get("steps", []):
+        run = str(step.get("run", ""))
+        if "generate-channel-manifest.py" in run and "matrix.entry.world" not in run:
+            print("the manifest is generated with a world that is not the entry's")
 
 # And the entry has to carry one in the first place.
 resolve = None

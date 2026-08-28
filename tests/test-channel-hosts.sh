@@ -27,7 +27,7 @@ generate()
 	printf 'packages\n' > "$work/packages/vita.db"
 	python3 "$generator" \
 		--core-release core-under-test --packages-release packages-under-test \
-		--channel nightly --sequence 1 \
+		--channel nightly --world vita --sequence 1 \
 		--core-dir "$work/core" --packages-dir "$work/packages" \
 		--output-dir "$work/out"
 }
@@ -76,7 +76,7 @@ mkdir -p "$work/core" "$work/packages"
 printf 'packages\n' > "$work/packages/vita.db"
 if output=$(python3 "$generator" \
 		--core-release empty-core --packages-release packages-under-test \
-		--channel nightly --sequence 1 \
+		--channel nightly --world vita --sequence 1 \
 		--core-dir "$work/core" --packages-dir "$work/packages" \
 		--output-dir "$work/out" 2>&1); then
 	printf 'FAIL: a core with no host database was accepted\n' >&2

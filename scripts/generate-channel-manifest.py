@@ -209,7 +209,12 @@ def main():
                         help="Target channel name: nightly, stable, or a "
                              "release series such as 2026.09")
     parser.add_argument("--sequence", type=int, default=1, help="Monotonic channel sequence number")
-    parser.add_argument("--world", default="vita", choices=WORLDS,
+    # No default. The world decides which database the manifest names and
+    # which core it installs, so a caller that forgets it would publish a
+    # channel serving one world's packages against another world's ABI --
+    # signed, internally consistent, and wrong in a way nothing downstream
+    # can see. Being asked is the only place that can catch it.
+    parser.add_argument("--world", required=True, choices=WORLDS,
                         help="Toolchain world this snapshot was built for")
     parser.add_argument("--key", help="Path to Ed25519 private key in PEM format")
     parser.add_argument("--core-dir", help="Optional local directory containing core databases")
