@@ -3,7 +3,7 @@
     "build_id": "sha256:444abd9f481520c51c905c7dd68af60501a84112736551a9aee1445dcae79543",
     "core_snapshot": "sdk-vita_softfp-snapshot-20260828.667.1",
     "run": "33171124736",
-    "status": "packages_building",
+    "status": "promoted",
     "version": "0.20260828.315"
   },
   "generation": 1,
