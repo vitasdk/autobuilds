@@ -360,7 +360,12 @@ jobs:
             echo "::error::REPO_DISPATCH_TOKEN secret is required for cross-repo dispatch to vitasdk/vitasdk-autobuild"
             exit 1
           fi
+          # The world as well as the series. A core belongs to one of each,
+          # and the catalogue side matches on both: told only the series it
+          # finds whichever world happens to be first in it, which is how a
+          # softfp core came to be pinned as the default world's.
           gh api repos/vitasdk/vitasdk-autobuild/dispatches \
             -f event_type=core_published \
             -f client_payload[core_snapshot]="${{ steps.publish.outputs.snapshot_tag }}" \
-            -f client_payload[series]="${{ needs.prepare.outputs.series }}"
+            -f client_payload[series]="${{ needs.prepare.outputs.series }}" \
+            -f client_payload[world]="${{ needs.prepare.outputs.profile }}"
