@@ -10,16 +10,28 @@ series they are not on, and publishing a nightly core to 2026.08 does the
 same to the people who chose a series precisely so it would not move.
 
 The core's lock says which series it belongs to -- null for a build whose
-version is derived from history, which is what nightly is. That is the field
-this reads, and the rule is symmetric: nightly takes cores with no series,
-and a series channel takes only its own. A channel named anything else is
-refused rather than guessed at.
+version is derived from history, which is what a channel that moves on its
+own serves. That is the field this reads, and the rule is symmetric: a
+channel that moves on its own takes cores with no series, and a series
+channel takes only its own.
+
+Which channels move on their own is not a name this file knows. It is the
+list the promotion rules already keep, so a second one -- a second world
+tracking the same unnamed series -- is covered by being added there.
 """
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Which channels move on their own, from the rules that already decide it:
+# duplicating the list here is how the two would drift apart, and the way
+# they drift is a channel published without a check somebody meant it to have.
+from promotions import AUTOMATIC  # noqa: E402
 
 
 def read_release_file(repository, release, name, local_path):
@@ -46,12 +58,12 @@ def check_series(lock, channel, core_release):
     """The core belongs to the line the channel is."""
     series = lock.get("series")
     version = lock.get("version", "?")
-    if channel == "nightly":
+    if channel in AUTOMATIC:
         if series is not None:
             raise SystemExit(
                 f"ERROR: {core_release} is version {version} of series {series}, "
-                "and nightly is the channel for builds that belong to no series. "
-                f"Publishing it here would move every nightly user onto {series}.")
+                f"and {channel} is a channel for builds that belong to no series. "
+                f"Publishing it here would move every {channel} user onto {series}.")
         return
     if series is None:
         raise SystemExit(

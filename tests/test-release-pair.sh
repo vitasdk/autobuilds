@@ -84,6 +84,17 @@ lock 0.20260825.285 null
 provenance sdk-snapshot-1.1.1
 accepts "a derived version publishes to nightly" nightly
 
+# A second world tracking the same unnamed series is the same shape: its core
+# declares no series either, and the channel it serves is not a series name.
+# Read as one, it was refused with "belongs to no series" -- which is exactly
+# what a channel that moves on its own is supposed to be pointed at.
+accepts "a derived version publishes to a second automatic channel" nightly-softfp
+
+lock 2026.08.1 '"2026.08"'
+provenance sdk-snapshot-1.1.1
+refuses "a series core published to a second automatic channel" \
+	"belong to no series" nightly-softfp
+
 lock 2026.08.1 '"2026.08"'
 provenance sdk-snapshot-1.1.1
 accepts "a declared version publishes to its own series" 2026.08
