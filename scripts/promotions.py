@@ -18,8 +18,15 @@ import json
 import pathlib
 import sys
 
-POINTER = ("core", "packages", "world")
-AUTOMATIC = ("nightly",)
+# What a series serves: an exact core and an exact package set. The world is
+# not part of it -- it says what the channel is, like its status does, and an
+# automatic channel declares one without pinning anything.
+PAIR = ("core", "packages")
+POINTER = PAIR + ("world",)
+# Channels whose pair is not written down: they follow whatever the builder
+# published last, so it arrives by dispatch and lives in the signed manifest.
+# One per world, because a channel serves exactly one.
+AUTOMATIC = ("nightly", "nightly-softfp")
 
 
 class PromotionError(Exception):
@@ -42,7 +49,7 @@ def pointer_of(name, entry):
     """The pair a series serves, or None when it has none at all."""
     if not isinstance(entry, dict):
         raise PromotionError(f"{name} is not an object")
-    present = [field for field in POINTER if entry.get(field)]
+    present = [field for field in PAIR if entry.get(field)]
     if not present:
         return None
     if name in AUTOMATIC:
