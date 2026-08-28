@@ -1,9 +1,9 @@
 {
   "candidate": {
     "build_id": "sha256:7cd0fd948621ab6af98a4bad47e766317274d57d58dcaafa81878996a56bff8b",
-    "core_snapshot": null,
+    "core_snapshot": "sdk-snapshot-20260828.654.1",
     "run": "33129356445",
-    "status": "building",
+    "status": "packages_building",
     "version": "0.20260828.311"
   },
   "generation": 15,
