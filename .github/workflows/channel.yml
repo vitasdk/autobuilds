@@ -213,6 +213,11 @@ jobs:
         shell: bash
         env:
           SIGNING_KEY: ${{ secrets.CHANNEL_SIGNING_KEY }}
+          # The generator asks the API which host databases a core release
+          # carries. Anonymous quota on a runner is shared and routinely
+          # spent, and two worlds publishing together ask twice as often, so
+          # the second one is the one that finds it gone.
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p vitasdk.github.io/channels
           key_file=$(mktemp)

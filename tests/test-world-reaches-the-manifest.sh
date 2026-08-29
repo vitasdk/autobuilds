@@ -50,6 +50,12 @@ for path in sorted(glob.glob(f"{directory}/.github/workflows/*.yml")):
                     print(f"{where} runs {script} without --world")
                 elif "--world ''" in run or '--world ""' in run:
                     print(f"{where} runs {script} with an empty world")
+                # Both scripts ask the API which assets a release carries.
+                # Anonymous quota on a runner is shared and routinely spent,
+                # and two worlds publishing together ask twice as often, so
+                # the second one is where a missing token shows up.
+                if "GH_TOKEN" not in (step.get("env") or {}):
+                    print(f"{where} runs {script} without a token to ask with")
 
 for script in wants_world:
     if script not in seen:
