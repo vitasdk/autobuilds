@@ -1,12 +1,12 @@
 {
   "candidate": {
-    "build_id": "sha256:5f64ffeec51720a5c358f93eefb7c5d1cbad9e506ab7361033345d9acf5515b7",
+    "build_id": "sha256:3ba6d0b3fe627ad33f7224b46724e81ce92d5ae6b84aea63a3fb1277b7497f81",
     "core_snapshot": null,
-    "run": "36192682771",
+    "run": "36193127691",
     "status": "building",
-    "version": "0.20260918.319"
+    "version": "0.20260925.320"
   },
-  "generation": 65,
+  "generation": 66,
   "profile": "vita",
   "schema": 1
 }
