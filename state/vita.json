@@ -2,11 +2,11 @@
   "candidate": {
     "build_id": "sha256:31e2047efb773a9d3c658fd543e8d92f33d200a893fb9afa35b6ca955324fc5b",
     "core_snapshot": null,
-    "run": "44175394509",
+    "run": "44260514348",
     "status": "building",
     "version": "0.20261112.323"
   },
-  "generation": 83,
+  "generation": 84,
   "profile": "vita",
   "schema": 1
 }
