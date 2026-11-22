@@ -256,12 +256,10 @@ jobs:
         if: steps.candidate.outputs.stale != 'true'
         shell: bash
         run: |
-          cd vitasdk.github.io
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add channels/
-          git commit -m "channel: update ${{ matrix.entry.name }} to core ${{ matrix.entry.core }} and packages ${{ matrix.entry.packages }}" || exit 0
-          git push origin master
+          git -C vitasdk.github.io config user.name "github-actions[bot]"
+          git -C vitasdk.github.io config user.email "github-actions[bot]@users.noreply.github.com"
+          scripts/push-channel.sh vitasdk.github.io \
+            "channel: update ${{ matrix.entry.name }} to core ${{ matrix.entry.core }} and packages ${{ matrix.entry.packages }}"
 
       # Pages deploys after the push, not with it. Announcing the channel
       # before it is actually being served would have the image builder fetch
