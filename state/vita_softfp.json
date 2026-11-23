@@ -1,9 +1,9 @@
 {
   "candidate": {
     "build_id": "sha256:6219cfb2cf3687eb47ac65a8fafbc04ccd30bc6fa16a85df487cedec63c4824f",
-    "core_snapshot": null,
+    "core_snapshot": "sdk-vita_softfp-snapshot-20261123.969.1",
     "run": "45274538066",
-    "status": "building",
+    "status": "packages_building",
     "version": "0.20261123.330"
   },
   "generation": 3,
