@@ -1,12 +1,12 @@
 {
   "candidate": {
-    "build_id": "sha256:444abd9f481520c51c905c7dd68af60501a84112736551a9aee1445dcae79543",
-    "core_snapshot": "sdk-vita_softfp-snapshot-20260828.667.1",
-    "run": "33171124736",
-    "status": "promoted",
-    "version": "0.20260828.315"
+    "build_id": "sha256:4f3bc1e6bd158d679dd913b82ff4a7095df6c966672d0b69d2f3e4305f047129",
+    "core_snapshot": null,
+    "run": "45191485990",
+    "status": "building",
+    "version": "0.20261122.327"
   },
-  "generation": 1,
+  "generation": 2,
   "profile": "vita_softfp",
   "schema": 1
 }
